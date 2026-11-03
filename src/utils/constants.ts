@@ -37,12 +37,89 @@ export const TIME_SLOTS = [
   'Night (06:00 PM - 09:00 PM)',
 ];
 
+export interface LaundryServiceSpec {
+  id: string;
+  title: string;
+  shortTitle: string;
+  description: string;
+  iconName: 'WashingMachine' | 'Clock' | 'Calendar' | 'Truck';
+  badge?: string;
+  popular?: boolean;
+  features: string[];
+  timingNote: string;
+}
+
+export const FOUR_MAIN_SERVICES: LaundryServiceSpec[] = [
+  {
+    id: 'wash-and-iron',
+    title: 'WASH & IRON',
+    shortTitle: 'Wash & Steam Iron',
+    description: 'Complete laundry care, including washing, ironing and careful folding of everyday clothes.',
+    iconName: 'WashingMachine',
+    popular: true,
+    badge: 'Most Popular',
+    timingNote: 'Standard 24–48h Return',
+    features: [
+      'Gentle & hygienic washing cycle',
+      'Fabric softening & anti-bacterial rinse',
+      'High-pressure crisp steam ironing',
+      'Neatly folded or hanger packaging',
+    ],
+  },
+  {
+    id: 'express-service',
+    title: 'EXPRESS SERVICE',
+    shortTitle: 'Express Urgent Care',
+    description: 'Faster laundry service for customers with urgent laundry needs. Availability and timing can be confirmed during booking.',
+    iconName: 'Clock',
+    badge: 'Urgent Care',
+    timingNote: 'Expedited Priority',
+    features: [
+      'Prioritized queue jump in washing line',
+      'Dedicated fast-track steam pressing',
+      'Immediate pickup dispatch in Kasur',
+      'Confirmation of exact hours upon booking',
+    ],
+  },
+  {
+    id: 'monthly-packages',
+    title: 'MONTHLY PACKAGES',
+    shortTitle: 'Household Monthly Plan',
+    description: 'Convenient laundry packages for regular households. Contact us to explore available plans and package details.',
+    iconName: 'Calendar',
+    badge: 'Family Savings',
+    timingNote: 'Flexible Weekly Cycles',
+    features: [
+      'Regular weekly doorstep pickups',
+      'Predictable household laundry management',
+      'Tailored for families and students',
+      'Priority customer helpline assistance',
+    ],
+  },
+  {
+    id: 'pickup-and-delivery',
+    title: 'PICKUP & DELIVERY',
+    shortTitle: 'Doorstep Pickup & Return',
+    description: 'We collect your laundry from your doorstep and return it fresh and clean.',
+    iconName: 'Truck',
+    badge: '100% Doorstep',
+    timingNote: 'Kasur City-Wide',
+    features: [
+      'Direct doorstep collection from your gate',
+      'Clean sanitized pickup laundry bags',
+      'Covering Model Town, Steel Bagh & beyond',
+      'Returned fresh, crisp and ready to wear',
+    ],
+  },
+];
+
+// Backwards-compatible service item list for existing booking calculations
 export const CORE_SERVICES: ServiceItem[] = [
   {
     id: 'wash-and-iron',
     title: 'Wash & Steam Iron',
     slug: 'wash-and-iron',
-    description: 'Complete premium care: deep hygienic washing, softening rinse, crisp steam press, and hanger or folded packaging.',
+    description: 'Complete laundry care, including washing, ironing and careful folding of everyday clothes.',
     pricePerUnit: 180,
     unit: 'suit',
     turnaroundTime: '24–48 Hours',
@@ -57,52 +134,54 @@ export const CORE_SERVICES: ServiceItem[] = [
     ],
   },
   {
-    id: 'steam-iron-only',
-    title: 'Steam Ironing Only',
-    slug: 'steam-iron-only',
-    description: 'Wrinkle-free, sharp pressing for shalwar kameez, formal shirts, suits, and everyday wear.',
-    pricePerUnit: 60,
+    id: 'express-service',
+    title: 'Express Service',
+    slug: 'express-service',
+    description: 'Faster laundry service for customers with urgent laundry needs. Availability confirmed during booking.',
+    pricePerUnit: 250,
     unit: 'suit',
-    turnaroundTime: 'Same Day / 24 Hours',
-    icon: 'Flame',
-    features: [
-      'Gentle fabric protection',
-      'Crisp collar & cuff finishing',
-      'Hanger or neat fold option',
-      'Fast doorstep return',
-    ],
-  },
-  {
-    id: 'wash-and-fold',
-    title: 'Wash & Fold (Bulk Laundry)',
-    slug: 'wash-and-fold',
-    description: 'Ideal for busy families and students: casual daily clothes, t-shirts, towels, and bed linens washed and neatly folded.',
-    pricePerUnit: 160,
-    unit: 'kg',
-    turnaroundTime: '24 Hours',
-    icon: 'Layers',
+    turnaroundTime: 'Express Timing',
+    icon: 'Clock',
     popular: false,
     features: [
-      'Weighed accurately upon pickup',
-      'Hypoallergenic wash cycle',
-      'Precision fold & pack',
-      'Economical bulk rates',
+      'Priority wash & dry cycle',
+      'Quick steam press & finishing',
+      'Expedited dispatch in Kasur',
+      'Confirmation on booking',
     ],
   },
   {
-    id: 'bedding-heavy',
-    title: 'Bedding, Blankets & Curtains',
-    slug: 'bedding-heavy',
-    description: 'Specialized deep cleaning for heavy winter quilts, comforters, blankets, bedsheets, and window curtains.',
-    pricePerUnit: 650,
+    id: 'monthly-packages',
+    title: 'Monthly Packages',
+    slug: 'monthly-packages',
+    description: 'Convenient laundry packages for regular households. Contact us for custom plan details.',
+    pricePerUnit: 2400,
     unit: 'piece',
-    turnaroundTime: '48–72 Hours',
-    icon: 'Package',
+    turnaroundTime: 'Weekly Scheduled',
+    icon: 'Calendar',
+    popular: false,
     features: [
-      'Industrial gentle tumbling',
-      'Dust-mite & allergen removal',
-      'Odor neutralization',
-      'Protective moisture-proof bags',
+      'Regular scheduled pickups',
+      'Cost savings for families',
+      'Customized bundle options',
+      'Dedicated customer care',
+    ],
+  },
+  {
+    id: 'pickup-and-delivery',
+    title: 'Pickup & Delivery',
+    slug: 'pickup-and-delivery',
+    description: 'We collect your laundry from your doorstep in Kasur and return it fresh and clean.',
+    pricePerUnit: 0,
+    unit: 'suit',
+    turnaroundTime: 'Doorstep',
+    icon: 'Truck',
+    popular: false,
+    features: [
+      'Direct collection at your gate',
+      'Kasur-wide rider routes',
+      'Sanitized delivery bags',
+      'Real-time order tracking',
     ],
   },
 ];
@@ -117,4 +196,3 @@ export const ORDER_STATUS_LABELS: Record<string, { label: string; color: string;
   delivered: { label: 'Delivered Clean & Fresh', color: 'bg-emerald-100 text-emerald-800 border-emerald-300', step: 7 },
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-800 border-red-300', step: 0 },
 };
-

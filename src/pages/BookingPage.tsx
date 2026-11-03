@@ -46,6 +46,13 @@ export const BookingPage: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
+    const serviceParam = searchParams.get('service');
+    if (serviceParam && CORE_SERVICES.some((s) => s.id === serviceParam)) {
+      setFormData((prev) => ({ ...prev, serviceId: serviceParam }));
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (user) {
       setFormData((prev) => ({
         ...prev,
