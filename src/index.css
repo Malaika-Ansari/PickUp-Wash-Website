@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    background-color: #EAF3F8;
+    color: #173B57;
+    font-family: 'Inter', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif;
+  }
+}
+
+/* Glassmorphism & Custom Accents */
+.glass-nav {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(23, 59, 87, 0.08);
+}
+
+.subtle-gradient {
+  background: linear-gradient(135deg, #173B57 0%, #1d496c 100%);
+}
+
+.ice-card-gradient {
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5F9FC 100%);
+}
+

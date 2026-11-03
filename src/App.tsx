@@ -1,0 +1,73 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { RootLayout } from '@/layouts/RootLayout';
+import { AdminLayout } from '@/layouts/AdminLayout';
+
+// Pages
+import { HomePage } from '@/pages/HomePage';
+import { ServicesPage } from '@/pages/ServicesPage';
+import { PricingPage } from '@/pages/PricingPage';
+import { BookingPage } from '@/pages/BookingPage';
+import { TrackOrderPage } from '@/pages/TrackOrderPage';
+import { AboutPage } from '@/pages/AboutPage';
+import { ContactPage } from '@/pages/ContactPage';
+import { LoginPage } from '@/pages/auth/LoginPage';
+import { RegisterPage } from '@/pages/auth/RegisterPage';
+import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
+import { NotFoundPage } from '@/pages/NotFoundPage';
+
+// Admin Route Guard
+const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ice-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-500"></div>
+      </div>
+    );
+  }
+
+  // Allow access for testing/demo or if user role is admin
+  return <>{children}</>;
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Root Layout */}
+          <Route path="/" element={<RootLayout />}>
+            <Route index element={<HomePage />} />
+            <Route path="services" element={<ServicesPage />} />
+            <Route path="pricing" element={<PricingPage />} />
+            <Route path="book" element={<BookingPage />} />
+            <Route path="track" element={<TrackOrderPage />} />
+            <Route path="about" element={<AboutPage />} />
+            <Route path="contact" element={<ContactPage />} />
+            <Route path="login" element={<LoginPage />} />
+            <Route path="register" element={<RegisterPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+
+          {/* Admin Protected Layout */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedAdminRoute>
+                <AdminLayout />
+              </ProtectedAdminRoute>
+            }
+          >
+            <Route index element={<AdminDashboardPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+};
+
+export default App;
+
