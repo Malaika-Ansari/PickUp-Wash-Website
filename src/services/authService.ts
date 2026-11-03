@@ -1,9 +1,10 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { UserProfile } from '@/types';
+import { UserProfile, ProfileRecord } from '@/types';
 
 export const authService = {
   /**
    * Get the currently authenticated customer from Supabase.
+   * Reads profile data from public.profiles table.
    * Returns null if unauthenticated or if Supabase is not configured.
    */
   async getCurrentUser(): Promise<UserProfile | null> {
@@ -21,42 +22,54 @@ export const authService = {
         return null;
       }
 
-      // Read extended profile attributes if available
+      // Read extended profile from public.profiles
       try {
-        const { data: profile } = await supabase
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single();
 
-        return {
-          id: user.id,
-          email: user.email || '',
-          full_name: profile?.full_name || user.user_metadata?.full_name || 'Customer',
-          phone_number: profile?.phone_number || user.user_metadata?.phone_number || '',
-          role: profile?.role || 'customer',
-          created_at: user.created_at,
-        };
-      } catch {
-        // Fallback to user metadata
-        return {
-          id: user.id,
-          email: user.email || '',
-          full_name: user.user_metadata?.full_name || 'Customer',
-          phone_number: user.user_metadata?.phone_number || '',
-          role: 'customer',
-          created_at: user.created_at,
-        };
+        if (profile && !profileError) {
+          const typedProfile = profile as ProfileRecord;
+          const phoneVal = typedProfile.phone || user.user_metadata?.phone || user.user_metadata?.phone_number || '';
+          return {
+            id: user.id,
+            email: typedProfile.email || user.email || '',
+            full_name: typedProfile.full_name || user.user_metadata?.full_name || 'Customer',
+            phone_number: phoneVal,
+            phone: phoneVal,
+            address: typedProfile.address || undefined,
+            area: typedProfile.area || undefined,
+            role: typedProfile.role || 'customer',
+            created_at: typedProfile.created_at || user.created_at,
+            updated_at: typedProfile.updated_at,
+          };
+        }
+      } catch (err) {
+        console.warn('Could not read from public.profiles, falling back to auth metadata:', err);
       }
+
+      // Fallback to auth metadata if profiles row is pending trigger execution
+      const fallbackPhone = user.user_metadata?.phone || user.user_metadata?.phone_number || '';
+      return {
+        id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || 'Customer',
+        phone_number: fallbackPhone,
+        phone: fallbackPhone,
+        role: (user.user_metadata?.role as any) || 'customer',
+        created_at: user.created_at,
+      };
     } catch (err) {
-      console.warn('Error reading Supabase session:', err);
+      console.warn('Error verifying Supabase user session:', err);
       return null;
     }
   },
 
   /**
    * Sign in using Supabase Authentication.
-   * Real authentication only - does not create fake sessions.
+   * Authenticates against real Supabase project.
    */
   async signIn(
     email: string,
@@ -66,13 +79,13 @@ export const authService = {
       return {
         user: null,
         error:
-          'Supabase is not configured. Please add your valid VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the .env file to enable live authentication.',
+          'Supabase credentials are not configured. Please add your valid VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.',
       };
     }
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
       });
 
@@ -81,26 +94,19 @@ export const authService = {
       }
 
       if (data.user) {
-        const profile: UserProfile = {
-          id: data.user.id,
-          email: data.user.email || email,
-          full_name: data.user.user_metadata?.full_name || 'Customer',
-          phone_number: data.user.user_metadata?.phone_number || '',
-          role: data.user.email?.includes('admin') ? 'admin' : 'customer',
-          created_at: data.user.created_at,
-        };
-
+        const profile = await this.getCurrentUser();
         return { user: profile };
       }
 
       return { user: null, error: 'Unable to authenticate with provided credentials.' };
     } catch (err: any) {
-      return { user: null, error: err.message || 'An unexpected error occurred during login.' };
+      return { user: null, error: err.message || 'An unexpected network error occurred during login.' };
     }
   },
 
   /**
    * Register a new customer account using Supabase Authentication.
+   * Auto-triggers profile creation in public.profiles.
    */
   async signUp(
     email: string,
@@ -112,18 +118,23 @@ export const authService = {
       return {
         user: null,
         error:
-          'Supabase is not configured. Please add your valid VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to the .env file to enable live registration.',
+          'Supabase credentials are not configured. Please add your valid VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your .env file.',
       };
     }
 
     try {
+      const trimmedEmail = email.trim().toLowerCase();
+      const trimmedPhone = phone.trim();
+      const trimmedName = fullName.trim();
+
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
         options: {
           data: {
-            full_name: fullName.trim(),
-            phone_number: phone.trim(),
+            full_name: trimmedName,
+            phone: trimmedPhone,
+            phone_number: trimmedPhone,
           },
         },
       });
@@ -133,26 +144,27 @@ export const authService = {
       }
 
       if (data.user) {
+        // Confirmation is required if session is null initially (Supabase email confirmation setting)
+        const confirmationRequired = !data.session;
+
         const profile: UserProfile = {
           id: data.user.id,
-          email: data.user.email || email,
-          full_name: fullName.trim(),
-          phone_number: phone.trim(),
+          email: trimmedEmail,
+          full_name: trimmedName,
+          phone_number: trimmedPhone,
+          phone: trimmedPhone,
           role: 'customer',
           created_at: data.user.created_at,
         };
 
-        // If email confirmation is enabled on Supabase, session might be null initially
-        const confirmationRequired = !data.session;
-
         return { user: profile, confirmationRequired };
       }
 
-      return { user: null, error: 'Registration failed. Please check your details.' };
+      return { user: null, error: 'Registration failed. Please review your details and try again.' };
     } catch (err: any) {
       return {
         user: null,
-        error: err.message || 'An unexpected error occurred during registration.',
+        error: err.message || 'An unexpected error occurred during customer registration.',
       };
     }
   },
@@ -165,12 +177,12 @@ export const authService = {
       return {
         success: false,
         error:
-          'Supabase is not configured. Please configure your Supabase credentials in the .env file to enable password resets.',
+          'Supabase is not configured. Please add your Supabase credentials to .env to enable password resets.',
       };
     }
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
         redirectTo: `${window.location.origin}/login`,
       });
 
@@ -188,14 +200,14 @@ export const authService = {
   },
 
   /**
-   * Sign out and terminate the Supabase session.
+   * Terminate the Supabase customer session.
    */
   async signOut(): Promise<void> {
     if (isSupabaseConfigured()) {
       try {
         await supabase.auth.signOut();
       } catch (e) {
-        console.warn('Error signing out from Supabase:', e);
+        console.warn('Error signing out of Supabase:', e);
       }
     }
   },

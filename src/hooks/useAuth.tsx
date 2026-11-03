@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { UserProfile } from '@/types';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { UserProfile, UpdateProfilePayload } from '@/types';
 import { authService } from '@/services/authService';
+import { profileService } from '@/services/profileService';
 import { supabase, isSupabaseConfigured } from '@/services/supabase';
 
 interface AuthContextType {
@@ -14,6 +15,8 @@ interface AuthContextType {
     phone: string
   ) => Promise<{ success: boolean; error?: string; confirmationRequired?: boolean }>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  updateProfile: (payload: UpdateProfilePayload) => Promise<{ success: boolean; error?: string }>;
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
   isConfigured: boolean;
@@ -25,6 +28,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isConfigured = isSupabaseConfigured();
+
+  const refreshUser = useCallback(async () => {
+    if (isConfigured) {
+      try {
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } catch (err) {
+        console.warn('Failed to refresh user profile:', err);
+      }
+    }
+  }, [isConfigured]);
 
   // Load session and subscribe to Supabase auth events
   useEffect(() => {
@@ -52,7 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isConfigured) {
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
+      } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (!isMounted) return;
 
         if (session?.user) {
@@ -90,7 +104,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: Boolean(loggedInUser), error };
   };
 
-  const register = async (email: string, password: string, fullName: string, phone: string) => {
+  const register = async (
+    email: string,
+    password: string,
+    fullName: string,
+    phone: string
+  ) => {
     setIsLoading(true);
     const { user: newUser, error, confirmationRequired } = await authService.signUp(
       email,
@@ -109,6 +128,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return await authService.resetPassword(email);
   };
 
+  const updateProfile = async (payload: UpdateProfilePayload) => {
+    if (!user) {
+      return { success: false, error: 'User is not logged in.' };
+    }
+
+    const { profile, error } = await profileService.updateProfile(user.id, payload);
+    if (error || !profile) {
+      return { success: false, error: error || 'Failed to update profile.' };
+    }
+
+    // Update local user state immediately
+    setUser((prev) =>
+      prev
+        ? {
+            ...prev,
+            full_name: profile.full_name,
+            phone_number: profile.phone || '',
+            phone: profile.phone || '',
+            address: profile.address || undefined,
+            area: profile.area || undefined,
+            updated_at: profile.updated_at,
+          }
+        : null
+    );
+
+    return { success: true };
+  };
+
   const logout = async () => {
     setIsLoading(true);
     await authService.signOut();
@@ -124,6 +171,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         resetPassword,
+        updateProfile,
+        refreshUser,
         logout,
         isAdmin: user?.role === 'admin',
         isConfigured,

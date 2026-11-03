@@ -24,6 +24,7 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS, TIME_SLOTS } from '@/utils/constants';
 import { orderService } from '@/services/orderService';
+import { useAuth } from '@/hooks/useAuth';
 
 // Allowed services as requested by the prompt
 type ServiceType = 'Wash & Iron' | 'Express Service' | 'Monthly Package';
@@ -74,8 +75,24 @@ export const BookingPage: React.FC = () => {
     agreedToPolicies: false,
   });
 
+  const { user } = useAuth();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  // Auto-fill authenticated customer details if logged in
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        fullName: prev.fullName || user.full_name || '',
+        phoneNumber: prev.phoneNumber || user.phone_number || user.phone || '',
+        email: prev.email || user.email || '',
+        pickupAddress: prev.pickupAddress || user.address || '',
+        area: prev.area || user.area || KASUR_SERVICE_AREAS[0],
+      }));
+    }
+  }, [user]);
 
   // Sync service from search params if changed
   useEffect(() => {
@@ -179,21 +196,29 @@ export const BookingPage: React.FC = () => {
         'Monthly Package': 'monthly-packages',
       };
 
-      const result = await orderService.createOrder({
-        fullName: formData.fullName,
-        phoneNumber: formData.phoneNumber,
-        email: formData.email,
-        streetAddress: formData.pickupAddress,
-        area: formData.area,
-        serviceId: serviceIdMap[formData.laundryService] || 'wash-and-iron',
-        pickupDate: formData.pickupDate,
-        pickupTimeSlot: formData.pickupTime,
-        specialInstructions: formData.specialInstructions,
-        paymentMethod:
-          formData.paymentMethod === 'Cash on Delivery'
-            ? 'cash_on_delivery'
-            : 'easypaisa_jazzcash',
-      });
+      setSubmitError('');
+
+      const result = await orderService.createOrder(
+        {
+          fullName: formData.fullName,
+          phoneNumber: formData.phoneNumber,
+          email: formData.email,
+          streetAddress: formData.pickupAddress,
+          area: formData.area,
+          serviceId: serviceIdMap[formData.laundryService] || 'wash-and-iron',
+          pickupDate: formData.pickupDate,
+          pickupTimeSlot: formData.pickupTime,
+          specialInstructions: formData.specialInstructions,
+          paymentMethod: formData.paymentMethod,
+        },
+        user?.id
+      );
+
+      if (!result.success && result.error) {
+        setSubmitError(result.error);
+        setIsSubmitting(false);
+        return;
+      }
 
       const trackingNumber =
         result.success && result.order ? result.order.trackingNumber : undefined;
@@ -217,26 +242,9 @@ export const BookingPage: React.FC = () => {
           },
         },
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error submitting booking:', err);
-      // Fallback navigation with frontend details
-      navigate('/booking-confirmation', {
-        state: {
-          booking: {
-            fullName: formData.fullName,
-            phoneNumber: formData.phoneNumber,
-            email: formData.email,
-            pickupAddress: `${formData.pickupAddress}, ${formData.area}, Kasur`,
-            area: formData.area,
-            selectedService: formData.laundryService,
-            pickupDate: formData.pickupDate,
-            preferredPickupTime: formData.pickupTime,
-            specialInstructions: formData.specialInstructions,
-            paymentMethod: formData.paymentMethod,
-            submittedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          },
-        },
-      });
+      setSubmitError(err.message || 'An unexpected error occurred while scheduling your pickup.');
     } finally {
       setIsSubmitting(false);
     }
@@ -306,6 +314,20 @@ export const BookingPage: React.FC = () => {
                     Please enter your contact information and pickup location in Kasur.
                   </p>
                 </div>
+
+                {/* Server / Network Error Alert */}
+                {submitError && (
+                  <div
+                    role="alert"
+                    className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-start gap-2.5"
+                  >
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold block text-red-900">Submission Error</span>
+                      <p className="font-inter leading-relaxed mt-0.5">{submitError}</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Summary Error Banner if validation fails */}
                 {Object.keys(errors).length > 0 && (

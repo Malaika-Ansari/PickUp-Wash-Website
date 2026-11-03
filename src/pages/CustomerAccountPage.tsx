@@ -28,10 +28,11 @@ import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
 import { orderService } from '@/services/orderService';
+import { bookingService } from '@/services/bookingService';
 import { Order } from '@/types';
 
 export const CustomerAccountPage: React.FC = () => {
-  const { user, isConfigured } = useAuth();
+  const { user, isConfigured, updateProfile } = useAuth();
   const location = useLocation();
 
   const [bookings, setBookings] = useState<Order[]>([]);
@@ -40,6 +41,7 @@ export const CustomerAccountPage: React.FC = () => {
 
   // Profile Edit State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     fullName: user?.full_name || '',
     phoneNumber: user?.phone_number || '',
@@ -47,6 +49,7 @@ export const CustomerAccountPage: React.FC = () => {
     address: user?.address || '',
   });
   const [profileSuccessMessage, setProfileSuccessMessage] = useState('');
+  const [profileErrorMessage, setProfileErrorMessage] = useState('');
 
   // Update profile data if user changes
   useEffect(() => {
@@ -116,17 +119,50 @@ export const CustomerAccountPage: React.FC = () => {
     (b) => b.status !== 'delivered' && b.status !== 'cancelled'
   ).length;
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Save in session state
-    if (user) {
-      user.full_name = profileData.fullName;
-      user.phone_number = profileData.phoneNumber;
-      user.address = profileData.address;
+    setProfileErrorMessage('');
+    setProfileSuccessMessage('');
+    setIsSavingProfile(true);
+
+    try {
+      const res = await updateProfile({
+        full_name: profileData.fullName,
+        phone: profileData.phoneNumber,
+        address: profileData.address,
+      });
+
+      if (res.success) {
+        setIsEditingProfile(false);
+        setProfileSuccessMessage('Account details updated successfully in database.');
+        setTimeout(() => setProfileSuccessMessage(''), 4000);
+      } else {
+        setProfileErrorMessage(res.error || 'Failed to save account changes.');
+      }
+    } catch (err: any) {
+      setProfileErrorMessage(err.message || 'An unexpected error occurred while saving.');
+    } finally {
+      setIsSavingProfile(false);
     }
-    setIsEditingProfile(false);
-    setProfileSuccessMessage('Account details updated successfully.');
-    setTimeout(() => setProfileSuccessMessage(''), 4000);
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!user) return;
+    const confirmed = window.confirm('Are you sure you want to cancel this pending booking?');
+    if (!confirmed) return;
+
+    try {
+      const res = await bookingService.cancelBooking(bookingId, user.id);
+      if (res.success) {
+        setBookings((prev) =>
+          prev.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' as const } : b))
+        );
+      } else {
+        alert(res.error || 'Unable to cancel booking.');
+      }
+    } catch (err) {
+      console.error('Error cancelling booking:', err);
+    }
   };
 
   const isProfileTab = location.pathname.includes('/profile');
@@ -467,6 +503,13 @@ export const CustomerAccountPage: React.FC = () => {
           </div>
         )}
 
+        {profileErrorMessage && (
+          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{profileErrorMessage}</span>
+          </div>
+        )}
+
         {isEditingProfile ? (
           /* Profile Edit Form */
           <form onSubmit={handleProfileSave} className="space-y-4 max-w-xl">
@@ -531,6 +574,8 @@ export const CustomerAccountPage: React.FC = () => {
                 type="submit"
                 variant="accent"
                 size="sm"
+                isLoading={isSavingProfile}
+                disabled={isSavingProfile}
                 className="font-bold text-darkNavy shadow-aqua"
                 leftIcon={<Save className="w-4 h-4 text-darkNavy" />}
               >

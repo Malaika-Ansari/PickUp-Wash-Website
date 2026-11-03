@@ -1,262 +1,257 @@
 import { supabase, isSupabaseConfigured } from './supabase';
-import { BookingFormData, Order, OrderStatus } from '@/types';
-import { CORE_SERVICES } from '@/utils/constants';
+import { bookingService } from './bookingService';
+import {
+  BookingFormData,
+  Order,
+  OrderStatus,
+  BookingStatus,
+  BookingRecord,
+  PaymentMethod,
+} from '@/types';
 
-// Local storage backup key for fallback/offline development mode
-const LOCAL_ORDERS_KEY = 'pickupwash_orders';
-
-const getLocalOrders = (): Order[] => {
-  try {
-    const raw = localStorage.getItem(LOCAL_ORDERS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
+// Map database booking_status to legacy OrderStatus for backward compatibility
+const mapBookingStatusToLegacy = (status: BookingStatus | string): OrderStatus => {
+  switch (status) {
+    case 'Booking Request Received':
+      return 'pending_pickup';
+    case 'Booking Confirmed':
+      return 'pending_pickup';
+    case 'Clothes Picked Up':
+      return 'picked_up';
+    case 'Washing & Ironing':
+      return 'processing';
+    case 'Ready for Delivery':
+      return 'ready_for_delivery';
+    case 'Delivered':
+      return 'delivered';
+    case 'Cancelled':
+      return 'cancelled';
+    default:
+      return 'pending_pickup';
   }
 };
 
-const saveLocalOrders = (orders: Order[]): void => {
-  try {
-    localStorage.setItem(LOCAL_ORDERS_KEY, JSON.stringify(orders));
-  } catch (e) {
-    console.error('Error saving local orders:', e);
-  }
+// Convert BookingRecord to Order interface
+const bookingRecordToOrder = (record: BookingRecord): Order => {
+  return {
+    id: record.id,
+    trackingNumber: record.booking_reference,
+    userId: record.customer_id || undefined,
+    customerName: 'Customer', // Populated by caller when joining with profiles
+    customerPhone: '',
+    pickupAddress: record.pickup_address,
+    area: record.area,
+    pickupDate: record.pickup_date,
+    pickupTimeSlot: record.pickup_time,
+    status: mapBookingStatusToLegacy(record.booking_status),
+    bookingStatus: record.booking_status,
+    items: [
+      {
+        serviceId: record.service_type.toLowerCase().replace(/\s+/g, '-'),
+        serviceTitle: record.service_type,
+        quantity: 1,
+        unitPrice: 0,
+        totalPrice: 0,
+      },
+    ],
+    totalAmount: 0,
+    specialInstructions: record.special_instructions || undefined,
+    paymentMethod: record.payment_method,
+    paymentStatus: record.payment_status,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  };
 };
 
 export const orderService = {
-  // Generate Kasur tracking code e.g. PW-KSR-10492
+  /**
+   * Generates tracking reference code
+   */
   generateTrackingCode(): string {
-    const randomNum = Math.floor(10000 + Math.random() * 90000);
-    return `PW-KSR-${randomNum}`;
+    return bookingService.generateBookingReference();
   },
 
-  async createOrder(data: BookingFormData, userId?: string): Promise<{ success: boolean; order?: Order; error?: string }> {
-    const trackingNumber = this.generateTrackingCode();
-    const service = CORE_SERVICES.find((s) => s.id === data.serviceId) || CORE_SERVICES[0];
-
-    const newOrder: Order = {
-      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-      trackingNumber,
-      userId,
-      customerName: data.fullName,
-      customerPhone: data.phoneNumber,
-      pickupAddress: `${data.streetAddress}${data.landmark ? ` (Near ${data.landmark})` : ''}`,
-      area: data.area,
-      pickupDate: data.pickupDate,
-      pickupTimeSlot: data.pickupTimeSlot,
-      status: 'pending_pickup',
-      items: [
-        {
-          serviceId: service.id,
-          serviceTitle: service.title,
-          quantity: 1,
-          unitPrice: service.pricePerUnit,
-          totalPrice: service.pricePerUnit,
-        },
-      ],
-      totalAmount: service.pricePerUnit,
-      specialInstructions: data.specialInstructions,
-      paymentMethod: data.paymentMethod,
-      paymentStatus: 'pending',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  /**
+   * Create an order/booking in the database
+   */
+  async createOrder(
+    data: BookingFormData,
+    userId?: string
+  ): Promise<{ success: boolean; order?: Order; error?: string }> {
+    const serviceNameMap: Record<string, string> = {
+      'wash-and-iron': 'Wash & Iron',
+      'express-service': 'Express Service',
+      'monthly-packages': 'Monthly Package',
+      'iron-only': 'Iron Only',
+      'bedding-and-household': 'Bedding & Household',
     };
 
-    if (isSupabaseConfigured()) {
-      try {
-        const { error } = await supabase.from('orders').insert([
-          {
-            tracking_number: newOrder.trackingNumber,
-            user_id: newOrder.userId || null,
-            customer_name: newOrder.customerName,
-            customer_phone: newOrder.customerPhone,
-            pickup_address: newOrder.pickupAddress,
-            area: newOrder.area,
-            pickup_date: newOrder.pickupDate,
-            pickup_time_slot: newOrder.pickupTimeSlot,
-            status: newOrder.status,
-            total_amount: newOrder.totalAmount,
-            special_instructions: newOrder.specialInstructions,
-            payment_method: newOrder.paymentMethod,
-            payment_status: newOrder.paymentStatus,
-          },
-        ]);
+    const resolvedServiceType =
+      serviceNameMap[data.serviceId] || data.serviceId || 'Wash & Iron';
 
-        if (error) {
-          console.warn('Supabase insert failed, falling back to local storage:', error.message);
-        }
-      } catch (err) {
-        console.warn('Network error reaching Supabase, storing locally:', err);
-      }
+    // Normalize payment method to standard database check constraint
+    let resolvedPaymentMethod: PaymentMethod = 'Cash on Delivery';
+    if (data.paymentMethod === 'easypaisa_jazzcash') {
+      resolvedPaymentMethod = 'JazzCash';
+    } else if (data.paymentMethod === 'bank_transfer') {
+      resolvedPaymentMethod = 'Bank Transfer';
+    } else if (
+      data.paymentMethod === 'JazzCash' ||
+      data.paymentMethod === 'Easypaisa' ||
+      data.paymentMethod === 'Bank Transfer'
+    ) {
+      resolvedPaymentMethod = data.paymentMethod;
     }
 
-    // Always update local cache so user immediately sees their order
-    const local = getLocalOrders();
-    saveLocalOrders([newOrder, ...local]);
+    const pickupAddress = data.streetAddress
+      ? `${data.streetAddress}${data.landmark ? ` (Near ${data.landmark})` : ''}`
+      : 'Kasur City';
 
-    return { success: true, order: newOrder };
-  },
+    const result = await bookingService.createBooking({
+      customer_id: userId || null,
+      service_type: resolvedServiceType,
+      pickup_address: pickupAddress,
+      area: data.area,
+      pickup_date: data.pickupDate,
+      pickup_time: data.pickupTimeSlot,
+      special_instructions: data.specialInstructions || null,
+      payment_method: resolvedPaymentMethod,
+    });
 
-  async getOrderByTracking(trackingNumber: string): Promise<Order | null> {
-    const cleanNumber = trackingNumber.trim().toUpperCase();
-
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('tracking_number', cleanNumber)
-          .single();
-
-        if (data && !error) {
-          return {
-            id: data.id,
-            trackingNumber: data.tracking_number,
-            userId: data.user_id,
-            customerName: data.customer_name,
-            customerPhone: data.customer_phone,
-            pickupAddress: data.pickup_address,
-            area: data.area,
-            pickupDate: data.pickup_date,
-            pickupTimeSlot: data.pickup_time_slot,
-            status: data.status,
-            items: [],
-            totalAmount: data.total_amount,
-            specialInstructions: data.special_instructions,
-            paymentMethod: data.payment_method,
-            paymentStatus: data.payment_status,
-            createdAt: data.created_at,
-            updatedAt: data.updated_at,
-          };
-        }
-      } catch (err) {
-        console.warn('Error fetching from Supabase, checking local:', err);
-      }
+    if (!result.success || !result.booking) {
+      return { success: false, error: result.error || 'Failed to submit booking.' };
     }
 
-    const local = getLocalOrders();
-    const match = local.find((o) => o.trackingNumber.toUpperCase() === cleanNumber);
-    return match || null;
+    const order = bookingRecordToOrder(result.booking);
+    order.customerName = data.fullName;
+    order.customerPhone = data.phoneNumber;
+
+    return { success: true, order };
   },
 
+  /**
+   * Query single order by tracking/booking reference
+   */
+  async getOrderByTracking(
+    trackingNumber: string,
+    phoneVerification?: string
+  ): Promise<Order | null> {
+    const result = await bookingService.getBookingByReference(
+      trackingNumber,
+      phoneVerification
+    );
+
+    if (!result.booking) {
+      return null;
+    }
+
+    return bookingRecordToOrder(result.booking);
+  },
+
+  /**
+   * Query customer orders/bookings
+   */
   async getCustomerOrders(
     userId?: string,
     customerPhone?: string,
-    customerEmail?: string
+    _customerEmail?: string
   ): Promise<Order[]> {
-    if (isSupabaseConfigured()) {
-      try {
-        let query = supabase.from('orders').select('*');
-        if (userId) {
-          query = query.eq('user_id', userId);
-        } else if (customerPhone) {
-          query = query.eq('customer_phone', customerPhone);
-        } else {
-          return [];
-        }
-
-        const { data, error } = await query.order('created_at', { ascending: false });
-
-        if (data && !error) {
-          return data.map((d) => ({
-            id: d.id,
-            trackingNumber: d.tracking_number,
-            userId: d.user_id,
-            customerName: d.customer_name,
-            customerPhone: d.customer_phone,
-            pickupAddress: d.pickup_address,
-            area: d.area,
-            pickupDate: d.pickup_date,
-            pickupTimeSlot: d.pickup_time_slot,
-            status: d.status,
-            items: [
-              {
-                serviceId: d.service_id || 'wash-and-iron',
-                serviceTitle: d.service_title || 'Wash & Iron',
-                quantity: 1,
-                unitPrice: d.total_amount || 0,
-                totalPrice: d.total_amount || 0,
-              },
-            ],
-            totalAmount: d.total_amount,
-            specialInstructions: d.special_instructions,
-            paymentMethod: d.payment_method,
-            paymentStatus: d.payment_status,
-            createdAt: d.created_at,
-            updatedAt: d.updated_at,
-          }));
-        }
-      } catch (err) {
-        console.warn('Error fetching customer orders from Supabase:', err);
-      }
+    if (!userId) {
+      return [];
     }
 
-    // Filter local orders strictly for the authenticated customer only
-    const local = getLocalOrders();
-    return local.filter((o) => {
-      if (userId && o.userId === userId) return true;
-      if (customerPhone && o.customerPhone && o.customerPhone === customerPhone) return true;
-      if (customerEmail && o.customerPhone && o.customerPhone.includes(customerEmail)) return true;
-      return false;
+    const result = await bookingService.getCustomerBookings(userId);
+    return result.bookings.map((b) => {
+      const order = bookingRecordToOrder(b);
+      if (customerPhone) {
+        order.customerPhone = customerPhone;
+      }
+      return order;
     });
   },
 
+  /**
+   * Admin: Query all bookings
+   */
   async getAllOrders(): Promise<Order[]> {
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
-          .from('orders')
+          .from('bookings')
           .select('*')
           .order('created_at', { ascending: false });
 
         if (data && !error) {
-          return data.map((d) => ({
-            id: d.id,
-            trackingNumber: d.tracking_number,
-            userId: d.user_id,
-            customerName: d.customer_name,
-            customerPhone: d.customer_phone,
-            pickupAddress: d.pickup_address,
-            area: d.area,
-            pickupDate: d.pickup_date,
-            pickupTimeSlot: d.pickup_time_slot,
-            status: d.status,
-            items: [],
-            totalAmount: d.total_amount,
-            specialInstructions: d.special_instructions,
-            paymentMethod: d.payment_method,
-            paymentStatus: d.payment_status,
-            createdAt: d.created_at,
-            updatedAt: d.updated_at,
-          }));
+          return (data as BookingRecord[]).map(bookingRecordToOrder);
         }
       } catch (err) {
         console.warn('Error fetching all orders from Supabase:', err);
       }
     }
 
-    return getLocalOrders();
+    // Local cache fallback
+    const raw = localStorage.getItem('pickupwash_bookings_cache');
+    if (raw) {
+      try {
+        const list = JSON.parse(raw) as BookingRecord[];
+        return list.map(bookingRecordToOrder);
+      } catch {
+        return [];
+      }
+    }
+    return [];
   },
 
-  async updateOrderStatus(trackingNumber: string, status: OrderStatus): Promise<boolean> {
+  /**
+   * Admin: Update order status
+   */
+  async updateOrderStatus(
+    trackingNumber: string,
+    newStatus: OrderStatus | BookingStatus
+  ): Promise<boolean> {
+    const statusMap: Record<string, BookingStatus> = {
+      pending_pickup: 'Booking Request Received',
+      picked_up: 'Clothes Picked Up',
+      processing: 'Washing & Ironing',
+      ironing: 'Washing & Ironing',
+      ready_for_delivery: 'Ready for Delivery',
+      out_for_delivery: 'Ready for Delivery',
+      delivered: 'Delivered',
+      cancelled: 'Cancelled',
+    };
+
+    const targetBookingStatus: BookingStatus =
+      statusMap[newStatus] || (newStatus as BookingStatus);
+
     if (isSupabaseConfigured()) {
       try {
-        await supabase
-          .from('orders')
-          .update({ status, updated_at: new Date().toISOString() })
-          .eq('tracking_number', trackingNumber);
+        const { error } = await supabase
+          .from('bookings')
+          .update({ booking_status: targetBookingStatus })
+          .eq('booking_reference', trackingNumber);
+
+        if (!error) return true;
       } catch (err) {
-        console.warn('Failed to update status on Supabase:', err);
+        console.warn('Error updating status in Supabase:', err);
       }
     }
 
-    const local = getLocalOrders();
-    const updated = local.map((order) =>
-      order.trackingNumber === trackingNumber
-        ? { ...order, status, updatedAt: new Date().toISOString() }
-        : order
-    );
-    saveLocalOrders(updated);
+    // Update local cache
+    const raw = localStorage.getItem('pickupwash_bookings_cache');
+    if (raw) {
+      try {
+        const list = JSON.parse(raw) as BookingRecord[];
+        const updated = list.map((b) =>
+          b.booking_reference === trackingNumber
+            ? { ...b, booking_status: targetBookingStatus }
+            : b
+        );
+        localStorage.setItem('pickupwash_bookings_cache', JSON.stringify(updated));
+        return true;
+      } catch {
+        return false;
+      }
+    }
     return true;
   },
 };
-

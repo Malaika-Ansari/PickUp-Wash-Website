@@ -28,7 +28,8 @@ import { Input } from '@/components/ui/Input';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { orderService } from '@/services/orderService';
-import { Order, OrderStatus } from '@/types';
+import { bookingService } from '@/services/bookingService';
+import { Order, OrderStatus, BookingStatusHistoryRecord } from '@/types';
 
 // The 6 Order Status Stages required by the prompt
 interface TimelineStage {
@@ -87,6 +88,7 @@ export const TrackOrderPage: React.FC = () => {
   const [customerBookings, setCustomerBookings] = useState<Order[]>([]);
 
   const [verifiedOrder, setVerifiedOrder] = useState<Order | null>(null);
+  const [statusHistory, setStatusHistory] = useState<BookingStatusHistoryRecord[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [isUnauthorized, setIsUnauthorized] = useState(false);
@@ -144,7 +146,7 @@ export const TrackOrderPage: React.FC = () => {
     setIsSearching(true);
 
     try {
-      const found = await orderService.getOrderByTracking(code);
+      const found = await orderService.getOrderByTracking(code, phoneVerification);
 
       if (!found) {
         setSearchError(`No booking record found for reference "${code}". Please check your code.`);
@@ -178,7 +180,8 @@ export const TrackOrderPage: React.FC = () => {
         const recordPhone = normalizePhone(found.customerPhone);
         const inputPhone = normalizePhone(phoneVerification);
 
-        if (!inputPhone || recordPhone !== inputPhone) {
+        // If backend RPC already matched phone, allow; otherwise verify
+        if (recordPhone && (!inputPhone || recordPhone !== inputPhone)) {
           setIsUnauthorized(true);
           setSearchError(
             'Verification Failed: The phone number provided does not match the contact number registered on this booking reference.'
@@ -190,6 +193,14 @@ export const TrackOrderPage: React.FC = () => {
 
       // Customer ownership verified
       setVerifiedOrder(found);
+
+      // Load lifecycle status audit trail from public.booking_status_history
+      try {
+        const historyRes = await bookingService.getBookingStatusHistory(found.id);
+        setStatusHistory(historyRes.history || []);
+      } catch (err) {
+        console.warn('Could not load status audit trail:', err);
+      }
     } catch (err: any) {
       console.error('Error tracking order:', err);
       setSearchError('An error occurred while tracking your order. Please try again.');
@@ -632,6 +643,42 @@ export const TrackOrderPage: React.FC = () => {
                         Doorstep Service
                       </span>
                     </div>
+
+                    {/* Status History Audit Log (Supabase public.booking_status_history) */}
+                    {statusHistory.length > 0 && (
+                      <div className="sm:col-span-3 p-4 rounded-2xl bg-white border border-ice-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-navy-500 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-aqua-600" />
+                            Status History & Audit Trail
+                          </span>
+                          <span className="text-[10px] text-darkNavy/60">
+                            {statusHistory.length} event{statusHistory.length > 1 ? 's' : ''} recorded
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 border-l-2 border-aqua-300 ml-2 pl-3">
+                          {statusHistory.map((item, idx) => (
+                            <div key={item.id || idx} className="text-xs space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-navy-600">{item.new_status}</span>
+                                <span className="text-[10px] text-darkNavy/50">
+                                  {new Date(item.changed_at).toLocaleString([], {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              {item.notes && (
+                                <p className="text-[11px] text-darkNavy/70 font-inter">{item.notes}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                   </div>
                 </div>

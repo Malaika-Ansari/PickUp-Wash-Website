@@ -266,3 +266,4 @@ To protect customer privacy while providing public tracking:
 # Push migration to remote Supabase project
 supabase db push
 ```
+

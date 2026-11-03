@@ -458,3 +458,4 @@ ON CONFLICT (package_name) DO UPDATE SET
     description = EXCLUDED.description,
     slug = EXCLUDED.slug,
     is_active = EXCLUDED.is_active;
+
