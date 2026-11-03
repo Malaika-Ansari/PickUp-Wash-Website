@@ -136,3 +136,4 @@ CREATE POLICY "Customers can modify own eligible bookings"
         )
         OR public.is_admin()
     );
+

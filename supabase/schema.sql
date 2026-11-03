@@ -99,6 +99,36 @@ CREATE TABLE IF NOT EXISTS public.booking_status_history (
     notes TEXT
 );
 
+-- 2.6 Customer Payments Table
+CREATE TABLE IF NOT EXISTS public.payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    booking_id UUID NOT NULL REFERENCES public.bookings(id) ON DELETE CASCADE,
+    customer_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    payment_method TEXT NOT NULL CHECK (
+        payment_method IN ('Cash on Delivery', 'JazzCash', 'Easypaisa', 'Bank Transfer')
+    ),
+    payment_amount NUMERIC(10, 2) NULL, -- Strictly nullable until pricing is confirmed
+    payment_status TEXT NOT NULL DEFAULT 'Pending' CHECK (
+        payment_status IN (
+            'Pending',
+            'Awaiting Verification',
+            'Paid',
+            'Failed',
+            'Refunded',
+            'pending',
+            'paid',
+            'failed',
+            'refunded'
+        )
+    ),
+    transaction_reference TEXT NULL,
+    payment_notes TEXT NULL,
+    verified_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    verified_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
 -- ==============================================================================
 -- 3. INDEXES FOR PERFORMANCE & OPTIMIZATION
 -- ==============================================================================

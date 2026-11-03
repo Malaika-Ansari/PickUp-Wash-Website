@@ -42,7 +42,16 @@ export type PaymentMethod =
   | 'Easypaisa'
   | 'Bank Transfer';
 
-export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'failed';
+export type PaymentStatus =
+  | 'Pending'
+  | 'Awaiting Verification'
+  | 'Paid'
+  | 'Failed'
+  | 'Refunded'
+  | 'pending'
+  | 'paid'
+  | 'failed'
+  | 'refunded';
 
 export interface ServiceItem {
   id: string;
@@ -200,3 +209,47 @@ export interface UpdateProfilePayload {
   address?: string;
   area?: string;
 }
+
+export interface PaymentRecord {
+  id: string;
+  booking_id: string;
+  customer_id: string | null;
+  payment_method: PaymentMethod;
+  payment_amount: number | null; // Nullable until actual rates are confirmed
+  payment_status: PaymentStatus;
+  transaction_reference?: string | null;
+  payment_notes?: string | null;
+  verified_by?: string | null;
+  verified_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreatePaymentPayload {
+  booking_id: string;
+  customer_id?: string | null;
+  payment_method: PaymentMethod;
+  payment_amount?: number | null;
+  payment_status?: PaymentStatus;
+  transaction_reference?: string | null;
+  payment_notes?: string | null;
+}
+
+export const normalizePaymentStatus = (
+  status?: string
+): 'Pending' | 'Awaiting Verification' | 'Paid' | 'Failed' | 'Refunded' => {
+  switch (status?.toLowerCase()) {
+    case 'paid':
+      return 'Paid';
+    case 'awaiting verification':
+    case 'awaiting_verification':
+      return 'Awaiting Verification';
+    case 'failed':
+      return 'Failed';
+    case 'refunded':
+      return 'Refunded';
+    case 'pending':
+    default:
+      return 'Pending';
+  }
+};

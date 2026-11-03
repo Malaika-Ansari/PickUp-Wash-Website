@@ -312,3 +312,4 @@ export const runBookingManagementTests = async (): Promise<TestResult[]> => {
 
   return results;
 };
+

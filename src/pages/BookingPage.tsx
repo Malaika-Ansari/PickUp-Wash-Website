@@ -591,7 +591,78 @@ export const BookingPage: React.FC = () => {
                   </FormField>
                 </div>
 
-                {/* 7. Agreement Checkbox (Required) */}
+                {/* 7. Preferred Payment Method Selection */}
+                <div className="space-y-3 pt-2 border-t border-ice-100">
+                  <div>
+                    <label className="text-xs font-bold text-navy-600 uppercase tracking-wider block">
+                      Preferred Payment Method <span className="text-red-500">*</span>
+                    </label>
+                    <p className="text-[11px] text-darkNavy/70 mt-0.5 font-inter">
+                      Select how you would prefer to settle your laundry invoice upon delivery in Kasur.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      {
+                        id: 'Cash on Delivery',
+                        title: 'Cash on Delivery (COD)',
+                        desc: 'Pay cash directly to rider at your gate.',
+                        badge: 'Recommended',
+                      },
+                      {
+                        id: 'JazzCash',
+                        title: 'JazzCash Digital Wallet',
+                        desc: 'Mobile account / app transfer upon delivery.',
+                        badge: 'Digital Wallet',
+                      },
+                      {
+                        id: 'Easypaisa',
+                        title: 'Easypaisa Digital Wallet',
+                        desc: 'Mobile account / app transfer upon delivery.',
+                        badge: 'Digital Wallet',
+                      },
+                      {
+                        id: 'Bank Transfer',
+                        title: 'Direct Bank Transfer (IBFT)',
+                        desc: 'Online banking transfer to verified account.',
+                        badge: 'Online Banking',
+                      },
+                    ].map((pm) => {
+                      const isSelected = formData.paymentMethod === pm.id;
+                      return (
+                        <div
+                          key={pm.id}
+                          onClick={() => handleInputChange('paymentMethod', pm.id as PaymentMethodType)}
+                          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between space-y-1.5 ${
+                            isSelected
+                              ? 'border-aqua-400 bg-aqua-50/40 ring-2 ring-aqua-300/40 shadow-sm'
+                              : 'border-ice-200 bg-white hover:border-ice-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name="paymentMethod"
+                                checked={isSelected}
+                                onChange={() => handleInputChange('paymentMethod', pm.id as PaymentMethodType)}
+                                className="h-4 w-4 text-aqua-600 focus:ring-aqua-400"
+                              />
+                              <span className="font-poppins font-bold text-xs text-navy-600">{pm.title}</span>
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-ice-100 text-navy-500 border border-ice-200">
+                              {pm.badge}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-darkNavy/70 pl-6 leading-relaxed font-inter">{pm.desc}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 8. Agreement Checkbox (Required) */}
                 <div className="pt-4 border-t border-ice-100">
                   <label
                     className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${

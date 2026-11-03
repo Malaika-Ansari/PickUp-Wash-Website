@@ -24,6 +24,10 @@ import {
   RotateCcw,
   XCircle,
   MessageCircle,
+  CreditCard,
+  Receipt,
+  Send,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -33,7 +37,8 @@ import { Select } from '@/components/ui/Select';
 import { useAuth } from '@/hooks/useAuth';
 import { orderService } from '@/services/orderService';
 import { bookingService } from '@/services/bookingService';
-import { Order } from '@/types';
+import { paymentService } from '@/services/paymentService';
+import { Order, PaymentRecord } from '@/types';
 import { TIME_SLOTS, BUSINESS_INFO } from '@/utils/constants';
 
 export const CustomerAccountPage: React.FC = () => {
@@ -71,6 +76,14 @@ export const CustomerAccountPage: React.FC = () => {
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [isRescheduling, setIsRescheduling] = useState(false);
   const [rescheduleFeedback, setRescheduleFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  // Payment Verification State
+  const [paymentRecord, setPaymentRecord] = useState<PaymentRecord | null>(null);
+  const [isLoadingPayment, setIsLoadingPayment] = useState(false);
+  const [tidInput, setTidInput] = useState('');
+  const [tidNotesInput, setTidNotesInput] = useState('');
+  const [isSubmittingTid, setIsSubmittingTid] = useState(false);
+  const [paymentFeedback, setPaymentFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
 
   // Update profile data if user changes
   useEffect(() => {
@@ -167,13 +180,81 @@ export const CustomerAccountPage: React.FC = () => {
     }
   };
 
-  const handleOpenDetails = (booking: Order) => {
+  const handleOpenDetails = async (booking: Order) => {
     setSelectedBooking(booking);
     setRescheduleDate(booking.pickupDate);
     setRescheduleTime(booking.pickupTimeSlot);
     setCancelFeedback(null);
     setRescheduleFeedback(null);
+    setTidInput('');
+    setTidNotesInput('');
+    setPaymentFeedback(null);
     setIsDetailModalOpen(true);
+
+    // Fetch live payment record
+    setIsLoadingPayment(true);
+    try {
+      const res = await paymentService.getPaymentByBookingId(booking.id);
+      if (res.payment) {
+        setPaymentRecord(res.payment);
+        if (res.payment.transaction_reference) {
+          setTidInput(res.payment.transaction_reference);
+        }
+      } else {
+        setPaymentRecord(null);
+      }
+    } catch (e) {
+      console.warn('Could not load payment record:', e);
+      setPaymentRecord(null);
+    } finally {
+      setIsLoadingPayment(false);
+    }
+  };
+
+  const handleSubmitTid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentRecord || !user || !tidInput.trim()) return;
+
+    setIsSubmittingTid(true);
+    setPaymentFeedback(null);
+    try {
+      const res = await paymentService.submitTransactionReference(
+        paymentRecord.id,
+        user.id,
+        tidInput,
+        tidNotesInput
+      );
+
+      if (res.success && res.payment) {
+        setPaymentRecord(res.payment);
+        setPaymentFeedback({
+          success: true,
+          message:
+            'Transaction Reference (TID) submitted! Your payment is now awaiting manual verification by our accounts team.',
+        });
+        // Update local state to reflect awaiting verification
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === selectedBooking?.id ? { ...b, paymentStatus: 'awaiting verification' as any } : b
+          )
+        );
+        if (selectedBooking) {
+          setSelectedBooking({ ...selectedBooking, paymentStatus: 'awaiting verification' as any });
+        }
+      } else {
+        setPaymentFeedback({
+          success: false,
+          message: res.error || 'Failed to submit transaction reference. Please try again.',
+        });
+      }
+    } catch (err: any) {
+      setPaymentFeedback({
+        success: false,
+        message: err.message || 'An error occurred while submitting transaction reference.',
+      });
+    } finally {
+      setIsSubmittingTid(false);
+    }
   };
 
   const handleConfirmCancel = async () => {
@@ -772,22 +853,194 @@ export const CustomerAccountPage: React.FC = () => {
                 <span className="text-navy-400 font-semibold uppercase tracking-wider text-[10px] block">
                   Payment Status
                 </span>
-                <span
-                  className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                    selectedBooking.paymentStatus === 'paid'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}
-                >
-                  {selectedBooking.paymentStatus}
+                {(() => {
+                  const statusLower = (paymentRecord?.payment_status || selectedBooking.paymentStatus || 'Pending').toLowerCase();
+                  if (statusLower === 'paid') {
+                    return (
+                      <span className="inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-100 text-emerald-800">
+                        Paid & Verified
+                      </span>
+                    );
+                  }
+                  if (statusLower === 'awaiting verification') {
+                    return (
+                      <span className="inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-sky-100 text-sky-800">
+                        Awaiting Verification
+                      </span>
+                    );
+                  }
+                  if (statusLower === 'failed') {
+                    return (
+                      <span className="inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-rose-100 text-rose-800">
+                        Failed
+                      </span>
+                    );
+                  }
+                  if (statusLower === 'refunded') {
+                    return (
+                      <span className="inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-gray-100 text-gray-800">
+                        Refunded
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-amber-100 text-amber-800">
+                      Pending
+                    </span>
+                  );
+                })()}
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-ice-50/60 border border-ice-100 space-y-1">
+                <span className="text-navy-400 font-semibold uppercase tracking-wider text-[10px] block">
+                  Billed Amount
+                </span>
+                <span className="font-bold text-navy-700 block">
+                  {paymentRecord?.payment_amount != null
+                    ? `PKR ${paymentRecord.payment_amount.toLocaleString()}`
+                    : 'Pending Inspection'}
                 </span>
               </div>
 
               {/* Special Promotion Notice */}
-              <div className="sm:col-span-2 p-3 rounded-xl bg-aqua-50/60 border border-aqua-200 text-aqua-900 flex items-center justify-between text-xs">
-                <span className="font-semibold">Special Offer Applied:</span>
-                <span className="font-bold text-aqua-700">Your First Pickup is FREE!</span>
+              <div className="p-3 rounded-xl bg-aqua-50/60 border border-aqua-200 text-aqua-900 flex items-center justify-between text-xs">
+                <span className="font-semibold">Special Offer:</span>
+                <span className="font-bold text-aqua-700">1st Pickup FREE</span>
               </div>
+            </div>
+
+            {/* =========================================================================
+                PAYMENT DETAILS & VERIFICATION SECTION
+               ========================================================================= */}
+            <div className="p-4 rounded-2xl bg-ice-50/70 border border-ice-200 space-y-3.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-navy-700 text-xs flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-aqua-600" />
+                  Payment Verification & Status
+                </span>
+                <span className="text-[10px] font-semibold text-darkNavy/60">
+                  {selectedBooking.paymentMethod}
+                </span>
+              </div>
+
+              {/* Cash on Delivery Notice */}
+              {selectedBooking.paymentMethod === 'Cash on Delivery' ? (
+                <div className="p-3 rounded-xl bg-white border border-ice-200 text-xs text-darkNavy/80 space-y-1">
+                  <div className="font-semibold text-navy-700 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Cash on Delivery Selected</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    Payment of your laundry bill will be collected in cash upon doorstep delivery after weighing & steam ironing. No advance deposit is needed.
+                  </p>
+                </div>
+              ) : (
+                /* Digital Payment Notice (JazzCash, Easypaisa, Bank Transfer) */
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-white border border-ice-200 text-xs text-darkNavy/80 space-y-1.5">
+                    <div className="font-semibold text-navy-700">
+                      Payment Instructions ({selectedBooking.paymentMethod}):
+                    </div>
+                    <p className="leading-relaxed text-darkNavy/70">
+                      Official account details for {selectedBooking.paymentMethod} will be shared with you via verified SMS/WhatsApp confirmation once your pickup is reviewed. You can also contact Pickup Wash directly.
+                    </p>
+                    <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-start gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Security Notice:</strong> All digital payments are verified manually by the Pickup Wash team before confirmation. Never share account PINs or OTP passwords.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Payment Status State Display */}
+                  {(() => {
+                    const statusLower = (paymentRecord?.payment_status || selectedBooking.paymentStatus || 'Pending').toLowerCase();
+                    if (statusLower === 'paid') {
+                      return (
+                        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <div>
+                            <span className="font-bold block">Payment Confirmed & Verified</span>
+                            <span className="text-[11px] text-emerald-700">
+                              Ref: {paymentRecord?.transaction_reference || 'Verified by Admin'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (statusLower === 'awaiting verification') {
+                      return (
+                        <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-900 text-xs space-y-1">
+                          <div className="flex items-center gap-2 font-bold">
+                            <Clock className="w-4 h-4 text-sky-600 shrink-0" />
+                            <span>Awaiting Manual Verification</span>
+                          </div>
+                          <p className="text-[11px] text-sky-800 leading-relaxed">
+                            Transaction Reference <strong>{paymentRecord?.transaction_reference || tidInput}</strong> has been received. Our accounts team verifies transfers manually. Your laundry service is progressing normally.
+                          </p>
+                        </div>
+                      );
+                    }
+                    return (
+                      /* Form to submit Transaction Reference (TID) */
+                      <form onSubmit={handleSubmitTid} className="p-3.5 rounded-xl bg-white border border-ice-200 space-y-2.5">
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-navy-700 text-xs block">
+                            Submit Transaction Reference (TID)
+                          </span>
+                          <span className="text-[11px] text-darkNavy/60 block">
+                            Once you have completed your payment, enter the transaction ID/reference from your app for verification:
+                          </span>
+                        </div>
+
+                        {paymentFeedback && (
+                          <div
+                            className={`p-2.5 rounded-xl text-xs flex items-center gap-2 ${
+                              paymentFeedback.success
+                                ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                                : 'bg-rose-50 border border-rose-200 text-rose-800'
+                            }`}
+                          >
+                            {paymentFeedback.success ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                            ) : (
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                            )}
+                            <span>{paymentFeedback.message}</span>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <Input
+                            placeholder="e.g. 12-digit JazzCash/Easypaisa TID or Bank Ref"
+                            value={tidInput}
+                            onChange={(e) => setTidInput(e.target.value)}
+                            required
+                            className="text-xs font-mono"
+                          />
+                          <Input
+                            placeholder="Sender Name / Account Title (optional)"
+                            value={tidNotesInput}
+                            onChange={(e) => setTidNotesInput(e.target.value)}
+                            className="text-xs"
+                          />
+                          <Button
+                            type="submit"
+                            size="xs"
+                            variant="primary"
+                            isLoading={isSubmittingTid}
+                            disabled={!tidInput.trim()}
+                            className="gap-1.5 text-xs font-semibold"
+                            leftIcon={<Send className="w-3 h-3" />}
+                          >
+                            Submit Reference for Verification
+                          </Button>
+                        </div>
+                      </form>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
 
             {/* 3-Hour Modification & Cancellation Status Box */}

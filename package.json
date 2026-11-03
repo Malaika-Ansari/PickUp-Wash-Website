@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node src/test/bookingTestRunner.mjs"
+    "test": "node src/test/bookingTestRunner.mjs && node src/test/paymentTestRunner.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.1",

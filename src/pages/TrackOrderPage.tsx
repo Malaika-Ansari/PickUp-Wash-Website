@@ -24,6 +24,8 @@ import {
   XCircle,
   HelpCircle,
   MessageCircle,
+  CreditCard,
+  Send,
 } from 'lucide-react';
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
@@ -34,7 +36,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { orderService } from '@/services/orderService';
 import { bookingService } from '@/services/bookingService';
-import { Order, OrderStatus, BookingStatusHistoryRecord } from '@/types';
+import { paymentService } from '@/services/paymentService';
+import { Order, OrderStatus, BookingStatusHistoryRecord, PaymentRecord } from '@/types';
 import { TIME_SLOTS, BUSINESS_INFO } from '@/utils/constants';
 
 // The 6 Order Status Stages required by the prompt
@@ -111,6 +114,13 @@ export const TrackOrderPage: React.FC = () => {
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [isRescheduling, setIsRescheduling] = useState(false);
   const [rescheduleFeedback, setRescheduleFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  // Payment Verification State
+  const [paymentRecord, setPaymentRecord] = useState<PaymentRecord | null>(null);
+  const [tidInput, setTidInput] = useState('');
+  const [tidNotesInput, setTidNotesInput] = useState('');
+  const [isSubmittingTid, setIsSubmittingTid] = useState(false);
+  const [paymentFeedback, setPaymentFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
 
   // Load authenticated customer's own bookings for quick 1-click tracking
   useEffect(() => {
@@ -212,6 +222,25 @@ export const TrackOrderPage: React.FC = () => {
 
       // Customer ownership verified
       setVerifiedOrder(found);
+      setTidInput('');
+      setTidNotesInput('');
+      setPaymentFeedback(null);
+
+      // Fetch live payment record
+      try {
+        const payRes = await paymentService.getPaymentByBookingId(found.id);
+        if (payRes.payment) {
+          setPaymentRecord(payRes.payment);
+          if (payRes.payment.transaction_reference) {
+            setTidInput(payRes.payment.transaction_reference);
+          }
+        } else {
+          setPaymentRecord(null);
+        }
+      } catch (e) {
+        console.warn('Could not load payment record in tracking:', e);
+        setPaymentRecord(null);
+      }
 
       // Load lifecycle status audit trail from public.booking_status_history
       try {
@@ -225,6 +254,49 @@ export const TrackOrderPage: React.FC = () => {
       setSearchError('An error occurred while tracking your order. Please try again.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleSubmitTid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentRecord || !tidInput.trim()) return;
+
+    setIsSubmittingTid(true);
+    setPaymentFeedback(null);
+    try {
+      const res = await paymentService.submitTransactionReference(
+        paymentRecord.id,
+        user?.id || paymentRecord.customer_id,
+        tidInput,
+        tidNotesInput
+      );
+
+      if (res.success && res.payment) {
+        setPaymentRecord(res.payment);
+        setPaymentFeedback({
+          success: true,
+          message:
+            'Transaction reference submitted! Your payment is now awaiting manual verification by our accounts team.',
+        });
+        if (verifiedOrder) {
+          setVerifiedOrder({
+            ...verifiedOrder,
+            paymentStatus: 'awaiting verification' as any,
+          });
+        }
+      } else {
+        setPaymentFeedback({
+          success: false,
+          message: res.error || 'Failed to submit transaction reference. Please try again.',
+        });
+      }
+    } catch (err: any) {
+      setPaymentFeedback({
+        success: false,
+        message: err.message || 'An error occurred while submitting transaction reference.',
+      });
+    } finally {
+      setIsSubmittingTid(false);
     }
   };
 
@@ -729,15 +801,42 @@ export const TrackOrderPage: React.FC = () => {
                         <span className="font-bold text-navy-700 text-xs block">
                           {verifiedOrder.paymentMethod}
                         </span>
-                        <span
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                            verifiedOrder.paymentStatus === 'paid'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {verifiedOrder.paymentStatus}
-                        </span>
+                        {(() => {
+                          const statusLower = (paymentRecord?.payment_status || verifiedOrder.paymentStatus || 'Pending').toLowerCase();
+                          if (statusLower === 'paid') {
+                            return (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-emerald-100 text-emerald-800">
+                                Paid & Verified
+                              </span>
+                            );
+                          }
+                          if (statusLower === 'awaiting verification') {
+                            return (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-sky-100 text-sky-800">
+                                Awaiting Verification
+                              </span>
+                            );
+                          }
+                          if (statusLower === 'failed') {
+                            return (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-rose-100 text-rose-800">
+                                Failed
+                              </span>
+                            );
+                          }
+                          if (statusLower === 'refunded') {
+                            return (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-gray-100 text-gray-800">
+                                Refunded
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase bg-amber-100 text-amber-800">
+                              Pending
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -756,6 +855,114 @@ export const TrackOrderPage: React.FC = () => {
                       <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 shrink-0">
                         Doorstep Service
                       </span>
+                    </div>
+
+                    {/* Dedicated Payment Verification & TID Card */}
+                    <div className="sm:col-span-3 p-4 sm:p-5 rounded-2xl border border-ice-200 bg-white space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-navy-600 text-xs flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-aqua-600" />
+                          Payment Details & Manual Verification
+                        </span>
+                        <span className="text-[11px] font-bold text-navy-500">
+                          {paymentRecord?.payment_amount != null
+                            ? `Amount: PKR ${paymentRecord.payment_amount.toLocaleString()}`
+                            : 'Amount: Pending Laundry Weighing'}
+                        </span>
+                      </div>
+
+                      {verifiedOrder.paymentMethod === 'Cash on Delivery' ? (
+                        <p className="text-xs text-darkNavy/70 font-inter leading-relaxed">
+                          Cash on Delivery: Payment will be collected in cash at your doorstep upon delivery. No advance transfer is needed.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="p-3 rounded-xl bg-ice-50 border border-ice-200 text-xs text-darkNavy/80 space-y-1.5">
+                            <p className="font-semibold text-navy-700">
+                              Payment Instructions for {verifiedOrder.paymentMethod}:
+                            </p>
+                            <p className="text-darkNavy/70">
+                              Official account details for {verifiedOrder.paymentMethod} are provided directly via SMS/WhatsApp confirmation once your pickup is reviewed. Do not transfer to unverified accounts.
+                            </p>
+                            <p className="text-[11px] text-amber-800">
+                              * Payments are verified manually by the Pickup Wash accounts team before confirmation.
+                            </p>
+                          </div>
+
+                          {(() => {
+                            const statusLower = (paymentRecord?.payment_status || verifiedOrder.paymentStatus || 'Pending').toLowerCase();
+                            if (statusLower === 'paid') {
+                              return (
+                                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <span>
+                                    Payment Confirmed & Verified. (Reference: {paymentRecord?.transaction_reference || 'Verified by Staff'})
+                                  </span>
+                                </div>
+                              );
+                            }
+                            if (statusLower === 'awaiting verification') {
+                              return (
+                                <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 text-xs flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-sky-600 shrink-0" />
+                                  <span>
+                                    Transaction Reference <strong>{paymentRecord?.transaction_reference || tidInput}</strong> has been received and is awaiting manual verification by our staff.
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <form onSubmit={handleSubmitTid} className="space-y-2 pt-1">
+                                <span className="text-xs font-semibold text-navy-700 block">
+                                  Submit Transaction Reference (TID):
+                                </span>
+                                {paymentFeedback && (
+                                  <div
+                                    className={`p-2.5 rounded-xl text-xs flex items-center gap-2 ${
+                                      paymentFeedback.success
+                                        ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                                        : 'bg-rose-50 border border-rose-200 text-rose-800'
+                                    }`}
+                                  >
+                                    {paymentFeedback.success ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+                                    ) : (
+                                      <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                                    )}
+                                    <span>{paymentFeedback.message}</span>
+                                  </div>
+                                )}
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  <Input
+                                    placeholder="Enter Transaction Reference (TID)"
+                                    value={tidInput}
+                                    onChange={(e) => setTidInput(e.target.value)}
+                                    required
+                                    className="text-xs font-mono"
+                                  />
+                                  <Input
+                                    placeholder="Sender Name (Optional)"
+                                    value={tidNotesInput}
+                                    onChange={(e) => setTidNotesInput(e.target.value)}
+                                    className="text-xs"
+                                  />
+                                  <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="primary"
+                                    isLoading={isSubmittingTid}
+                                    disabled={!tidInput.trim()}
+                                    className="shrink-0 text-xs font-semibold gap-1.5"
+                                    leftIcon={<Send className="w-3 h-3" />}
+                                  >
+                                    Submit TID
+                                  </Button>
+                                </div>
+                              </form>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
 
                     {/* 3-Hour Cancellation & Rescheduling Management Card */}

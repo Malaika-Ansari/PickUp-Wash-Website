@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { paymentService } from './paymentService';
 import {
   BookingRecord,
   BookingStatusHistoryRecord,
@@ -178,7 +179,7 @@ export const bookingService = {
       pickup_time: payload.pickup_time,
       special_instructions: payload.special_instructions || null,
       payment_method: payload.payment_method || 'Cash on Delivery',
-      payment_status: 'pending',
+      payment_status: 'Pending',
       booking_status: 'Request Received',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -219,6 +220,19 @@ export const bookingService = {
         const local = getLocalBookings();
         saveLocalBookings([inserted, ...local]);
 
+        // Automatically initialize associated payment record in public.payments
+        try {
+          await paymentService.createPaymentRecord({
+            booking_id: inserted.id,
+            customer_id: inserted.customer_id,
+            payment_method: inserted.payment_method,
+            payment_amount: null, // Nullable until confirmed
+            payment_status: 'Pending',
+          });
+        } catch (paymentErr) {
+          console.warn('Initial payment record creation notice:', paymentErr);
+        }
+
         return { success: true, booking: inserted };
       } catch (err: any) {
         console.error('Network error reaching Supabase:', err);
@@ -234,6 +248,20 @@ export const bookingService = {
     // Local fallback for offline/development mode when Supabase credentials are not yet configured
     const local = getLocalBookings();
     saveLocalBookings([newRecord, ...local]);
+
+    // Local payment record creation
+    try {
+      paymentService.createPaymentRecord({
+        booking_id: newRecord.id,
+        customer_id: newRecord.customer_id,
+        payment_method: newRecord.payment_method,
+        payment_amount: null,
+        payment_status: 'Pending',
+      });
+    } catch (e) {
+      console.warn('Local payment record fallback notice:', e);
+    }
+
     return { success: true, booking: newRecord };
   },
 
