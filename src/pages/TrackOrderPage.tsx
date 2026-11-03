@@ -20,16 +20,22 @@ import {
   User,
   Info,
   RotateCcw,
+  CalendarCheck2,
+  XCircle,
+  HelpCircle,
+  MessageCircle,
 } from 'lucide-react';
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAuth } from '@/hooks/useAuth';
 import { orderService } from '@/services/orderService';
 import { bookingService } from '@/services/bookingService';
 import { Order, OrderStatus, BookingStatusHistoryRecord } from '@/types';
+import { TIME_SLOTS, BUSINESS_INFO } from '@/utils/constants';
 
 // The 6 Order Status Stages required by the prompt
 interface TimelineStage {
@@ -42,19 +48,19 @@ interface TimelineStage {
 const TIMELINE_STAGES: TimelineStage[] = [
   {
     step: 1,
-    title: 'Booking Request Received',
-    desc: 'Pickup request received and queued for review.',
+    title: 'Request Received',
+    desc: 'Pickup request received & queued for processing.',
     icon: CalendarCheck,
   },
   {
     step: 2,
-    title: 'Booking Confirmed',
-    desc: 'Customer team confirmed slot and assigned a rider.',
+    title: 'Confirmed',
+    desc: 'Customer team confirmed slot & rider assigned.',
     icon: CheckCircle2,
   },
   {
     step: 3,
-    title: 'Clothes Picked Up',
+    title: 'Picked Up',
     desc: 'Rider collected laundry from your gate in Kasur.',
     icon: Truck,
   },
@@ -92,6 +98,19 @@ export const TrackOrderPage: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [isUnauthorized, setIsUnauthorized] = useState(false);
+
+  // 3-Hour Cancellation & Rescheduling Modals State
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('Change of schedule / plan');
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelFeedback, setCancelFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState(TIME_SLOTS[0]);
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [rescheduleFeedback, setRescheduleFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
 
   // Load authenticated customer's own bookings for quick 1-click tracking
   useEffect(() => {
@@ -210,24 +229,98 @@ export const TrackOrderPage: React.FC = () => {
   };
 
   // Map order status to one of the 6 timeline stages
-  const getStageIndex = (status: OrderStatus): number => {
+  const getStageIndex = (status: OrderStatus | string): number => {
     switch (status) {
+      case 'Request Received':
+      case 'Booking Request Received':
       case 'pending_pickup':
-        return 1; // Stage 1: Booking Request Received
+        return 1; // Stage 1: Request Received
+      case 'Confirmed':
+      case 'Booking Confirmed':
+        return 2; // Stage 2: Confirmed
+      case 'Picked Up':
+      case 'Clothes Picked Up':
       case 'picked_up':
-        return 3; // Stage 3: Clothes Picked Up
+        return 3; // Stage 3: Picked Up
+      case 'Washing & Ironing':
       case 'processing':
       case 'ironing':
         return 4; // Stage 4: Washing & Ironing
+      case 'Ready for Delivery':
       case 'ready_for_delivery':
       case 'out_for_delivery':
         return 5; // Stage 5: Ready for Delivery
+      case 'Delivered':
       case 'delivered':
         return 6; // Stage 6: Delivered
+      case 'Cancelled':
       case 'cancelled':
         return 0; // Cancelled
       default:
         return 1;
+    }
+  };
+
+  // Check 3-hour policy for the currently verified order
+  const policy = verifiedOrder
+    ? bookingService.checkModificationPolicy(verifiedOrder)
+    : null;
+
+  const handleConfirmCancel = async () => {
+    if (!verifiedOrder) return;
+    setIsCancelling(true);
+    setCancelFeedback(null);
+    try {
+      const res = await bookingService.requestCancellation(
+        verifiedOrder.id,
+        user?.id || 'guest',
+        cancelReason
+      );
+      setCancelFeedback({ success: res.success, message: res.message });
+      if (res.success) {
+        setVerifiedOrder((prev) => (prev ? { ...prev, status: 'Cancelled' } : null));
+        const historyRes = await bookingService.getBookingStatusHistory(verifiedOrder.id);
+        setStatusHistory(historyRes.history || []);
+        setTimeout(() => setIsCancelModalOpen(false), 2000);
+      }
+    } catch (err: any) {
+      setCancelFeedback({ success: false, message: err.message || 'Failed to cancel booking.' });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!verifiedOrder || !rescheduleDate) return;
+    setIsRescheduling(true);
+    setRescheduleFeedback(null);
+    try {
+      const res = await bookingService.requestReschedule(
+        verifiedOrder.id,
+        user?.id || 'guest',
+        rescheduleDate,
+        rescheduleTime,
+        rescheduleReason
+      );
+      setRescheduleFeedback({ success: res.success, message: res.message });
+      if (res.success) {
+        setVerifiedOrder((prev) =>
+          prev
+            ? {
+                ...prev,
+                pickupDate: rescheduleDate,
+                pickupTimeSlot: rescheduleTime,
+              }
+            : null
+        );
+        const historyRes = await bookingService.getBookingStatusHistory(verifiedOrder.id);
+        setStatusHistory(historyRes.history || []);
+        setTimeout(() => setIsRescheduleModalOpen(false), 2000);
+      }
+    } catch (err: any) {
+      setRescheduleFeedback({ success: false, message: err.message || 'Failed to reschedule pickup.' });
+    } finally {
+      setIsRescheduling(false);
     }
   };
 
@@ -627,8 +720,29 @@ export const TrackOrderPage: React.FC = () => {
                       </span>
                     </div>
 
+                    {/* Payment Method & Status (Kept distinct from Booking Status) */}
+                    <div className="p-4 rounded-2xl bg-ice-50/60 border border-ice-100 space-y-1">
+                      <span className="text-navy-400 font-semibold uppercase tracking-wider text-[10px] block">
+                        Payment Method & Status
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-navy-700 text-xs block">
+                          {verifiedOrder.paymentMethod}
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                            verifiedOrder.paymentStatus === 'paid'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {verifiedOrder.paymentStatus}
+                        </span>
+                      </div>
+                    </div>
+
                     {/* Estimated Delivery Information (Only if available) */}
-                    <div className="sm:col-span-3 p-4 rounded-2xl bg-ice-50/60 border border-ice-100 flex items-center justify-between gap-4">
+                    <div className="sm:col-span-2 p-4 rounded-2xl bg-ice-50/60 border border-ice-100 flex items-center justify-between gap-4">
                       <div className="space-y-0.5">
                         <span className="text-navy-400 font-semibold uppercase tracking-wider text-[10px] block">
                           Estimated Delivery Information
@@ -643,6 +757,80 @@ export const TrackOrderPage: React.FC = () => {
                         Doorstep Service
                       </span>
                     </div>
+
+                    {/* 3-Hour Cancellation & Rescheduling Management Card */}
+                    {policy && (
+                      <div className="sm:col-span-3 p-4 sm:p-5 rounded-2xl border border-ice-200 bg-white space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-navy-500 uppercase tracking-wider">
+                                3-Hour Modification & Cancellation Policy
+                              </span>
+                              {policy.canCancel ? (
+                                <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                  Eligible ({policy.timeRemainingFormatted})
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold bg-gray-100 text-gray-700 border border-gray-200 px-2 py-0.5 rounded-full">
+                                  Window Closed
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-darkNavy/70 font-inter leading-relaxed">
+                              {policy.canCancel
+                                ? 'Need to change your pickup date or cancel this request? You can submit changes free of charge within the 3-hour window.'
+                                : policy.reason}
+                            </p>
+                          </div>
+
+                          {policy.canCancel ? (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                onClick={() => {
+                                  setRescheduleDate(verifiedOrder.pickupDate);
+                                  setRescheduleTime(verifiedOrder.pickupTimeSlot);
+                                  setIsRescheduleModalOpen(true);
+                                }}
+                                className="gap-1.5 text-xs text-navy-700 font-semibold"
+                                leftIcon={<RotateCcw className="w-3.5 h-3.5 text-aqua-600" />}
+                              >
+                                Reschedule
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant="ghost"
+                                onClick={() => setIsCancelModalOpen(true)}
+                                className="gap-1.5 text-xs text-red-700 hover:bg-red-50 hover:text-red-800 font-semibold"
+                                leftIcon={<XCircle className="w-3.5 h-3.5 text-red-500" />}
+                              >
+                                Cancel Booking
+                              </Button>
+                            </div>
+                          ) : (
+                            <a
+                              href={`https://wa.me/923000000000?text=${encodeURIComponent(
+                                `Hello Pickup Wash, I have an inquiry about my booking: ${verifiedOrder.trackingNumber}`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0"
+                            >
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                className="gap-1.5 text-xs text-emerald-800 bg-emerald-50 border-emerald-200 hover:bg-emerald-100 font-semibold"
+                                leftIcon={<MessageCircle className="w-3.5 h-3.5 text-emerald-600" />}
+                              >
+                                Contact Support
+                              </Button>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Status History Audit Log (Supabase public.booking_status_history) */}
                     {statusHistory.length > 0 && (
@@ -733,6 +921,168 @@ export const TrackOrderPage: React.FC = () => {
                 </span>{' '}
                 This tracking engine demonstrates real-time stage progression across Kasur City.
                 Configure Supabase keys in <code>.env</code> to connect live cloud order webhooks.
+              </div>
+            </div>
+          )}
+
+          {/* Cancellation Modal */}
+          {isCancelModalOpen && verifiedOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-ice-200 space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-ice-100">
+                  <div className="flex items-center gap-2 text-red-600 font-bold">
+                    <XCircle className="w-5 h-5" />
+                    <span>Cancel Booking Request</span>
+                  </div>
+                  <button
+                    onClick={() => setIsCancelModalOpen(false)}
+                    className="p-1 rounded-full text-darkNavy/50 hover:bg-ice-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-3 text-xs text-darkNavy/80">
+                  <p>
+                    Are you sure you want to cancel booking{' '}
+                    <strong className="font-mono text-navy-700">{verifiedOrder.trackingNumber}</strong>?
+                  </p>
+                  <p className="text-amber-800 bg-amber-50 p-3 rounded-xl border border-amber-200">
+                    ℹ️ Cancellation is processed immediately in accordance with our 3-hour policy.
+                  </p>
+
+                  <FormField label="Reason for cancellation (optional)" htmlFor="cancel-reason">
+                    <Input
+                      id="cancel-reason"
+                      type="text"
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="e.g. Change of schedule, traveling, etc."
+                    />
+                  </FormField>
+                </div>
+
+                {cancelFeedback && (
+                  <div
+                    className={`p-3 rounded-xl text-xs ${
+                      cancelFeedback.success
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-red-50 text-red-800 border border-red-200'
+                    }`}
+                  >
+                    {cancelFeedback.message}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsCancelModalOpen(false)}
+                    disabled={isCancelling}
+                  >
+                    Keep Booking
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleConfirmCancel}
+                    isLoading={isCancelling}
+                    disabled={isCancelling}
+                    className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                  >
+                    Confirm Cancellation
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Reschedule Modal */}
+          {isRescheduleModalOpen && verifiedOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-900/60 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-ice-200 space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-ice-100">
+                  <div className="flex items-center gap-2 text-navy-700 font-bold">
+                    <RotateCcw className="w-5 h-5 text-aqua-600" />
+                    <span>Reschedule Pickup Slot</span>
+                  </div>
+                  <button
+                    onClick={() => setIsRescheduleModalOpen(false)}
+                    className="p-1 rounded-full text-darkNavy/50 hover:bg-ice-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <FormField label="New Pickup Date" required htmlFor="reschedule-date">
+                    <Input
+                      id="reschedule-date"
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
+                      value={rescheduleDate}
+                      onChange={(e) => setRescheduleDate(e.target.value)}
+                    />
+                  </FormField>
+
+                  <FormField label="Preferred Time Slot" required htmlFor="reschedule-time">
+                    <Select
+                      id="reschedule-time"
+                      value={rescheduleTime}
+                      onChange={(e) => setRescheduleTime(e.target.value)}
+                    >
+                      {TIME_SLOTS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormField>
+
+                  <FormField label="Reason / Instructions (optional)" htmlFor="reschedule-reason">
+                    <Input
+                      id="reschedule-reason"
+                      type="text"
+                      placeholder="e.g. Please collect after 3 PM"
+                      value={rescheduleReason}
+                      onChange={(e) => setRescheduleReason(e.target.value)}
+                    />
+                  </FormField>
+                </div>
+
+                {rescheduleFeedback && (
+                  <div
+                    className={`p-3 rounded-xl text-xs ${
+                      rescheduleFeedback.success
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-red-50 text-red-800 border border-red-200'
+                    }`}
+                  >
+                    {rescheduleFeedback.message}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsRescheduleModalOpen(false)}
+                    disabled={isRescheduling}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="accent"
+                    size="sm"
+                    onClick={handleConfirmReschedule}
+                    isLoading={isRescheduling}
+                    disabled={isRescheduling || !rescheduleDate}
+                    className="text-darkNavy font-bold shadow-aqua"
+                  >
+                    Save New Slot
+                  </Button>
+                </div>
               </div>
             </div>
           )}

@@ -9,25 +9,36 @@ import {
   PaymentMethod,
 } from '@/types';
 
-// Map database booking_status to legacy OrderStatus for backward compatibility
+// Map database booking_status to OrderStatus for backward and forward compatibility
 const mapBookingStatusToLegacy = (status: BookingStatus | string): OrderStatus => {
   switch (status) {
+    case 'Request Received':
     case 'Booking Request Received':
-      return 'pending_pickup';
+    case 'pending_pickup':
+      return 'Request Received';
+    case 'Confirmed':
     case 'Booking Confirmed':
-      return 'pending_pickup';
+      return 'Confirmed';
+    case 'Picked Up':
     case 'Clothes Picked Up':
-      return 'picked_up';
+    case 'picked_up':
+      return 'Picked Up';
     case 'Washing & Ironing':
-      return 'processing';
+    case 'processing':
+    case 'ironing':
+      return 'Washing & Ironing';
     case 'Ready for Delivery':
-      return 'ready_for_delivery';
+    case 'ready_for_delivery':
+    case 'out_for_delivery':
+      return 'Ready for Delivery';
     case 'Delivered':
-      return 'delivered';
+    case 'delivered':
+      return 'Delivered';
     case 'Cancelled':
-      return 'cancelled';
+    case 'cancelled':
+      return 'Cancelled';
     default:
-      return 'pending_pickup';
+      return (status as OrderStatus) || 'Request Received';
   }
 };
 
@@ -58,6 +69,11 @@ const bookingRecordToOrder = (record: BookingRecord): Order => {
     specialInstructions: record.special_instructions || undefined,
     paymentMethod: record.payment_method,
     paymentStatus: record.payment_status,
+    cancellationReason: record.cancellation_reason || undefined,
+    cancelledAt: record.cancelled_at || undefined,
+    rescheduledDate: record.rescheduled_date || undefined,
+    rescheduledTime: record.rescheduled_time || undefined,
+    rescheduleReason: record.reschedule_reason || undefined,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };

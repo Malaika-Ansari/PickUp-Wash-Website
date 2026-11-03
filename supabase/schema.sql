@@ -65,17 +65,26 @@ CREATE TABLE IF NOT EXISTS public.bookings (
     payment_status TEXT NOT NULL DEFAULT 'pending' CHECK (
         payment_status IN ('pending', 'paid', 'refunded', 'failed')
     ),
-    booking_status TEXT NOT NULL DEFAULT 'Booking Request Received' CHECK (
+    booking_status TEXT NOT NULL DEFAULT 'Request Received' CHECK (
         booking_status IN (
-            'Booking Request Received',
-            'Booking Confirmed',
-            'Clothes Picked Up',
+            'Request Received',
+            'Confirmed',
+            'Picked Up',
             'Washing & Ironing',
             'Ready for Delivery',
             'Delivered',
-            'Cancelled'
+            'Cancelled',
+            'Booking Request Received',
+            'Booking Confirmed',
+            'Clothes Picked Up'
         )
     ),
+    cancellation_reason TEXT,
+    cancelled_at TIMESTAMPTZ,
+    rescheduled_date DATE,
+    rescheduled_time TEXT,
+    reschedule_reason TEXT,
+    rescheduled_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );

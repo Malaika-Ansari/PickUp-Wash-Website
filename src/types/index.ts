@@ -13,7 +13,20 @@ export interface UserProfile {
   updated_at?: string;
 }
 
+export type BookingStatus =
+  | 'Request Received'
+  | 'Confirmed'
+  | 'Picked Up'
+  | 'Washing & Ironing'
+  | 'Ready for Delivery'
+  | 'Delivered'
+  | 'Cancelled'
+  | 'Booking Request Received'
+  | 'Booking Confirmed'
+  | 'Clothes Picked Up';
+
 export type OrderStatus =
+  | BookingStatus
   | 'pending_pickup'
   | 'picked_up'
   | 'processing'
@@ -22,15 +35,6 @@ export type OrderStatus =
   | 'out_for_delivery'
   | 'delivered'
   | 'cancelled';
-
-export type BookingStatus =
-  | 'Booking Request Received'
-  | 'Booking Confirmed'
-  | 'Clothes Picked Up'
-  | 'Washing & Ironing'
-  | 'Ready for Delivery'
-  | 'Delivered'
-  | 'Cancelled';
 
 export type PaymentMethod =
   | 'Cash on Delivery'
@@ -78,6 +82,11 @@ export interface Order {
   specialInstructions?: string;
   paymentMethod: 'cash_on_delivery' | 'easypaisa_jazzcash' | 'bank_transfer' | PaymentMethod;
   paymentStatus: 'pending' | 'paid' | PaymentStatus;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  rescheduledDate?: string;
+  rescheduledTime?: string;
+  rescheduleReason?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -126,8 +135,23 @@ export interface BookingRecord {
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
   booking_status: BookingStatus;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
+  rescheduled_date?: string | null;
+  rescheduled_time?: string | null;
+  reschedule_reason?: string | null;
+  rescheduled_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PolicyCheckResult {
+  canCancel: boolean;
+  canReschedule: boolean;
+  reason?: string;
+  hoursElapsed: number;
+  hoursRemaining: number;
+  timeRemainingFormatted: string;
 }
 
 export interface ServiceRecord {

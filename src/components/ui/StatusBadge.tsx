@@ -1,5 +1,5 @@
 import React from 'react';
-import { OrderStatus } from '@/types';
+import { OrderStatus, BookingStatus } from '@/types';
 import { cn } from '@/utils/cn';
 
 export type BadgeVariant =
@@ -13,7 +13,7 @@ export type BadgeVariant =
   | 'neutral';
 
 export interface StatusBadgeProps {
-  status?: OrderStatus;
+  status?: OrderStatus | BookingStatus | string;
   variant?: BadgeVariant;
   label?: string;
   size?: 'sm' | 'md' | 'lg';
@@ -31,41 +31,106 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   icon,
   className,
 }) => {
-  // If status is provided, map to semantic styling and label
+  // Map of canonical 7 statuses + legacy/database aliases
   const statusConfig: Record<
-    OrderStatus,
+    string,
     { label: string; bg: string; text: string; border: string; dot: string }
   > = {
-    pending_pickup: {
-      label: 'Pickup Scheduled',
+    // 1. Request Received
+    'Request Received': {
+      label: 'Request Received',
       bg: 'bg-amber-50',
       text: 'text-amber-800',
       border: 'border-amber-200',
       dot: 'bg-amber-500',
     },
-    picked_up: {
-      label: 'Collected from Doorstep',
+    'Booking Request Received': {
+      label: 'Request Received',
+      bg: 'bg-amber-50',
+      text: 'text-amber-800',
+      border: 'border-amber-200',
+      dot: 'bg-amber-500',
+    },
+    pending_pickup: {
+      label: 'Request Received',
+      bg: 'bg-amber-50',
+      text: 'text-amber-800',
+      border: 'border-amber-200',
+      dot: 'bg-amber-500',
+    },
+
+    // 2. Confirmed
+    Confirmed: {
+      label: 'Confirmed',
       bg: 'bg-blue-50',
       text: 'text-blue-800',
       border: 'border-blue-200',
       dot: 'bg-blue-500',
     },
+    'Booking Confirmed': {
+      label: 'Confirmed',
+      bg: 'bg-blue-50',
+      text: 'text-blue-800',
+      border: 'border-blue-200',
+      dot: 'bg-blue-500',
+    },
+
+    // 3. Picked Up
+    'Picked Up': {
+      label: 'Picked Up',
+      bg: 'bg-indigo-50',
+      text: 'text-indigo-800',
+      border: 'border-indigo-200',
+      dot: 'bg-indigo-500',
+    },
+    'Clothes Picked Up': {
+      label: 'Picked Up',
+      bg: 'bg-indigo-50',
+      text: 'text-indigo-800',
+      border: 'border-indigo-200',
+      dot: 'bg-indigo-500',
+    },
+    picked_up: {
+      label: 'Picked Up',
+      bg: 'bg-indigo-50',
+      text: 'text-indigo-800',
+      border: 'border-indigo-200',
+      dot: 'bg-indigo-500',
+    },
+
+    // 4. Washing & Ironing
+    'Washing & Ironing': {
+      label: 'Washing & Ironing',
+      bg: 'bg-aqua-50',
+      text: 'text-navy-900',
+      border: 'border-aqua-200',
+      dot: 'bg-aqua-500',
+    },
     processing: {
-      label: 'In Washing Cycle',
+      label: 'Washing & Ironing',
       bg: 'bg-aqua-50',
       text: 'text-navy-900',
       border: 'border-aqua-200',
       dot: 'bg-aqua-500',
     },
     ironing: {
-      label: 'Steam Pressing & QC',
-      bg: 'bg-indigo-50',
-      text: 'text-indigo-800',
-      border: 'border-indigo-200',
-      dot: 'bg-indigo-500',
+      label: 'Washing & Ironing',
+      bg: 'bg-aqua-50',
+      text: 'text-navy-900',
+      border: 'border-aqua-200',
+      dot: 'bg-aqua-500',
+    },
+
+    // 5. Ready for Delivery
+    'Ready for Delivery': {
+      label: 'Ready for Delivery',
+      bg: 'bg-teal-50',
+      text: 'text-teal-800',
+      border: 'border-teal-200',
+      dot: 'bg-teal-500',
     },
     ready_for_delivery: {
-      label: 'Packaged & Ready',
+      label: 'Ready for Delivery',
       bg: 'bg-teal-50',
       text: 'text-teal-800',
       border: 'border-teal-200',
@@ -78,12 +143,30 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       border: 'border-cyan-200',
       dot: 'bg-cyan-500',
     },
-    delivered: {
-      label: 'Delivered Clean & Fresh',
+
+    // 6. Delivered
+    Delivered: {
+      label: 'Delivered',
       bg: 'bg-emerald-50',
       text: 'text-emerald-800',
       border: 'border-emerald-200',
       dot: 'bg-emerald-500',
+    },
+    delivered: {
+      label: 'Delivered',
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-800',
+      border: 'border-emerald-200',
+      dot: 'bg-emerald-500',
+    },
+
+    // 7. Cancelled
+    Cancelled: {
+      label: 'Cancelled',
+      bg: 'bg-red-50',
+      text: 'text-red-800',
+      border: 'border-red-200',
+      dot: 'bg-red-500',
     },
     cancelled: {
       label: 'Cancelled',
@@ -100,20 +183,20 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   > = {
     primary: {
       bg: 'bg-navy-50',
-      text: 'text-navy-700',
+      text: 'text-navy-800',
       border: 'border-navy-200',
       dot: 'bg-navy-500',
     },
     secondary: {
-      bg: 'bg-white',
+      bg: 'bg-ice-100',
       text: 'text-darkNavy',
-      border: 'border-ice-200',
-      dot: 'bg-navy-400',
+      border: 'border-ice-300',
+      dot: 'bg-darkNavy',
     },
     accent: {
       bg: 'bg-aqua-50',
       text: 'text-aqua-900',
-      border: 'border-aqua-200',
+      border: 'border-aqua-300',
       dot: 'bg-aqua-500',
     },
     success: {
@@ -141,58 +224,66 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       dot: 'bg-red-500',
     },
     neutral: {
-      bg: 'bg-gray-100',
-      text: 'text-gray-800',
+      bg: 'bg-gray-50',
+      text: 'text-gray-700',
       border: 'border-gray-200',
-      dot: 'bg-gray-500',
+      dot: 'bg-gray-400',
     },
   };
 
-  const currentTheme = status
-    ? statusConfig[status]
-    : variant
-    ? genericVariants[variant]
-    : genericVariants.primary;
-
-  const displayLabel = label || (status ? statusConfig[status].label : 'Badge');
-
-  const sizeClasses = {
-    sm: 'text-[10px] px-2 py-0.5 gap-1.5',
-    md: 'text-xs px-2.5 py-1 gap-2',
-    lg: 'text-sm px-3.5 py-1.5 gap-2.5 font-semibold',
+  const sizeStyles = {
+    sm: 'text-[11px] px-2.5 py-0.5 gap-1.5',
+    md: 'text-xs px-3 py-1 gap-2',
+    lg: 'text-sm px-3.5 py-1.5 gap-2.5',
   };
+
+  const dotSizes = {
+    sm: 'w-1.5 h-1.5',
+    md: 'w-2 h-2',
+    lg: 'w-2.5 h-2.5',
+  };
+
+  // Resolve styling configuration
+  const currentConfig =
+    status && statusConfig[status]
+      ? statusConfig[status]
+      : variant
+      ? genericVariants[variant]
+      : genericVariants.neutral;
+
+  const displayLabel = label || (status && statusConfig[status]?.label) || status || 'Unknown';
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full font-medium border select-none transition-colors',
-        currentTheme.bg,
-        currentTheme.text,
-        currentTheme.border,
-        sizeClasses[size],
+        'inline-flex items-center font-medium rounded-full border transition-colors select-none shrink-0',
+        currentConfig.bg,
+        currentConfig.text,
+        currentConfig.border,
+        sizeStyles[size],
         className
       )}
     >
-      {pulse ? (
-        <span className="relative flex h-2 w-2 shrink-0">
-          <span
-            className={cn(
-              'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
-              currentTheme.dot
-            )}
-          />
-          <span
-            className={cn('relative inline-flex rounded-full h-2 w-2', currentTheme.dot)}
-          />
-        </span>
-      ) : icon ? (
+      {/* Optional Leading Icon or Status Indicator Dot */}
+      {icon ? (
         <span className="shrink-0">{icon}</span>
       ) : (
-        <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', currentTheme.dot)} />
+        <span className="relative flex shrink-0 items-center justify-center">
+          {pulse && (
+            <span
+              className={cn(
+                'animate-ping absolute inline-flex h-full w-full rounded-full opacity-75',
+                currentConfig.dot
+              )}
+            />
+          )}
+          <span
+            className={cn('relative inline-flex rounded-full', dotSizes[size], currentConfig.dot)}
+          />
+        </span>
       )}
 
       <span>{displayLabel}</span>
     </span>
   );
 };
-
