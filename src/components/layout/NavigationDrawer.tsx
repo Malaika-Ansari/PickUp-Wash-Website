@@ -2,21 +2,20 @@ import React, { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   X, 
-  MapPin, 
   Phone, 
-  User, 
   CalendarCheck, 
   Search, 
-  ShieldCheck, 
-  Sparkles, 
+  Home, 
+  Layers, 
+  HelpCircle, 
+  Tag, 
+  Info, 
+  ChevronRight, 
+  User, 
   LogOut,
-  ChevronRight,
-  Home,
-  Layers,
-  Tag,
-  Info,
-  HelpCircle
+  Sparkles
 } from 'lucide-react';
+import { Logo } from '@/components/common/Logo';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { BUSINESS_INFO } from '@/utils/constants';
@@ -25,19 +24,31 @@ import { cn } from '@/utils/cn';
 export interface NavigationDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  activePath?: string;
 }
 
 export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   isOpen,
   onClose,
+  activePath,
 }) => {
   const location = useLocation();
   const { user, logout, isAdmin } = useAuth();
 
+  // Navigation Items required by prompt
+  const navItems = [
+    { label: 'Home', path: '/', icon: Home },
+    { label: 'Services', path: '/services', icon: Layers },
+    { label: 'How It Works', path: '/#how-it-works', icon: Sparkles },
+    { label: 'Pricing', path: '/pricing', icon: Tag },
+    { label: 'About Us', path: '/about', icon: Info },
+    { label: 'Contact', path: '/contact', icon: HelpCircle },
+  ];
+
   // Close on route change
   useEffect(() => {
     onClose();
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   // Handle escape key and lock body scroll
   useEffect(() => {
@@ -60,15 +71,26 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
     };
   }, [isOpen, onClose]);
 
-  const navItems = [
-    { label: 'Home', path: '/', icon: Home },
-    { label: 'Services & Care', path: '/services', icon: Layers },
-    { label: 'Pricing & Rates', path: '/pricing', icon: Tag },
-    { label: 'Track Your Laundry', path: '/track', icon: Search, badge: 'Live' },
-    { label: 'About Startup', path: '/about', icon: Info },
-    { label: 'Contact Helpline', path: '/contact', icon: HelpCircle },
-    { label: 'Brand & Design System', path: '/design-system', icon: Sparkles, badge: 'UI Kit' },
-  ];
+  const handleLinkClick = (path: string) => {
+    if (path.includes('#')) {
+      const hash = path.split('#')[1];
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    onClose();
+  };
+
+  const isItemActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/' && !location.hash;
+    }
+    if (path.includes('#')) {
+      return location.hash === `#${path.split('#')[1]}`;
+    }
+    return location.pathname === path;
+  };
 
   if (!isOpen) return null;
 
@@ -77,53 +99,42 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       className="fixed inset-0 z-50 lg:hidden"
       role="dialog"
       aria-modal="true"
-      aria-label="Mobile Navigation Menu"
+      aria-label="Mobile Navigation Drawer"
     >
-      {/* Backdrop with Blur */}
+      {/* Backdrop overlay with blur */}
       <div
         className="fixed inset-0 bg-darkNavy-900/60 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Drawer Surface (Slides from right, takes 85% width up to 380px) */}
+      {/* Slide-out drawer container from the right */}
       <div
         className={cn(
-          'fixed inset-y-0 right-0 w-[85%] max-w-sm bg-white shadow-2xl flex flex-col justify-between overflow-y-auto',
+          'fixed inset-y-0 right-0 w-[85%] max-w-sm bg-white shadow-2xl flex flex-col justify-between overflow-y-auto z-10',
           'transition-transform duration-300 ease-out animate-in slide-in-from-right'
         )}
       >
         {/* Drawer Header */}
-        <div className="p-5 border-b border-ice-200 flex items-center justify-between bg-ice-50/60">
-          <Link to="/" onClick={onClose} className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-navy-500 flex items-center justify-center">
-              <svg className="w-5 h-5" viewBox="0 0 100 100" fill="none">
-                <circle cx="50" cy="50" r="32" stroke="#65B9C5" strokeWidth="8" strokeDasharray="140 30" strokeLinecap="round" />
-                <path d="M50 32C46 38 40 45 40 52C40 57.5 44.5 62 50 62C55.5 62 60 57.5 60 52C60 45 54 38 50 32Z" fill="#65B9C5"/>
-              </svg>
-            </div>
-            <div>
-              <span className="font-poppins font-bold text-lg text-navy-500">Pickup<span className="text-aqua-400">Wash</span></span>
-              <span className="block text-[10px] text-navy-400 uppercase font-semibold">Kasur City</span>
-            </div>
-          </Link>
-
+        <div className="p-5 border-b border-ice-200 flex items-center justify-between bg-white">
+          <Logo size="sm" onClick={onClose} />
+          
           <button
             type="button"
             onClick={onClose}
-            className="w-11 h-11 rounded-xl flex items-center justify-center text-darkNavy/60 hover:text-darkNavy hover:bg-ice-200/60 transition-colors focus:outline-none focus:ring-2 focus:ring-aqua-400"
+            className="w-11 h-11 rounded-2xl flex items-center justify-center text-darkNavy/60 hover:text-darkNavy hover:bg-ice-100 transition-colors focus:outline-none focus:ring-2 focus:ring-aqua-400"
             aria-label="Close navigation menu"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* User Card if Logged in */}
+        {/* User Account Snippet */}
         {user ? (
-          <div className="p-4 mx-4 mt-4 rounded-2xl bg-ice-100/70 border border-ice-200 space-y-2">
+          <div className="p-4 mx-4 mt-4 rounded-2xl bg-ice-50 border border-ice-200 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-full bg-navy-500 text-white flex items-center justify-center text-xs font-bold uppercase">
+                <div className="w-8 h-8 rounded-full bg-navy-500 text-white flex items-center justify-center text-xs font-bold uppercase">
                   {user.full_name?.charAt(0) || 'U'}
                 </div>
                 <div>
@@ -137,14 +148,9 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
                 </span>
               )}
             </div>
-
-            <div className="pt-2 border-t border-ice-200 flex items-center justify-between text-xs">
-              <Link
-                to="/account"
-                onClick={onClose}
-                className="text-navy-600 font-semibold hover:underline"
-              >
-                Customer Portal
+            <div className="pt-2 border-t border-ice-200/80 flex items-center justify-between text-xs">
+              <Link to="/account" onClick={onClose} className="text-navy-600 font-semibold hover:underline">
+                My Account
               </Link>
               <button
                 type="button"
@@ -160,83 +166,94 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             </div>
           </div>
         ) : (
-          <div className="p-4 mx-4 mt-4 rounded-2xl bg-navy-500 text-white space-y-2">
-            <div className="text-xs font-semibold text-aqua-300 uppercase tracking-wider">Customer Portal</div>
-            <p className="text-xs text-ice-200/90 leading-normal">Sign in to track orders, schedule pickups in 1 click & save Kasur addresses.</p>
-            <div className="pt-1 flex gap-2">
-              <Link to="/login" onClick={onClose} className="flex-1">
-                <Button size="xs" variant="accent" fullWidth className="text-xs py-2 font-semibold">
-                  Sign In
-                </Button>
-              </Link>
-              <Link to="/register" onClick={onClose} className="flex-1">
-                <Button size="xs" variant="secondary" fullWidth className="text-xs py-2">
-                  Register
-                </Button>
-              </Link>
-            </div>
+          <div className="px-4 pt-4">
+            <Link
+              to="/login"
+              onClick={onClose}
+              className="flex items-center justify-between p-3 rounded-2xl bg-ice-50 border border-ice-200 text-xs font-semibold text-navy-600 hover:bg-ice-100 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-aqua-600" />
+                <span>Customer Login / Register</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-navy-400" />
+            </Link>
           </div>
         )}
 
         {/* Navigation Links */}
-        <nav className="p-4 space-y-1.5 flex-1">
+        <nav className="p-4 space-y-1.5 flex-1" aria-label="Mobile Navigation Links">
           <div className="text-[11px] uppercase tracking-wider font-bold text-navy-400 px-3 py-1">
             Menu Navigation
           </div>
 
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = location.pathname === item.path;
+            const active = isItemActive(item.path);
+
             return (
               <Link
-                key={item.path}
+                key={item.label}
                 to={item.path}
-                onClick={onClose}
+                onClick={() => handleLinkClick(item.path)}
                 className={cn(
                   'flex items-center justify-between min-h-[48px] px-3.5 py-3 rounded-2xl text-sm font-medium transition-all duration-200',
                   active
-                    ? 'bg-ice-200/80 text-navy-500 font-semibold'
-                    : 'text-darkNavy/80 hover:bg-ice-100 hover:text-navy-500'
+                    ? 'bg-ice-100 text-navy-500 font-semibold border-l-4 border-aqua-400 pl-3'
+                    : 'text-darkNavy/80 hover:bg-ice-50 hover:text-navy-500'
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={cn('w-4 h-4', active ? 'text-navy-500' : 'text-navy-400')} />
+                  <Icon className={cn('w-4 h-4', active ? 'text-aqua-500' : 'text-navy-400')} />
                   <span>{item.label}</span>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  {item.badge && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-aqua-100 text-navy-800 border border-aqua-200">
-                      {item.badge}
-                    </span>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-darkNavy/30" />
-                </div>
+                <ChevronRight className={cn('w-4 h-4', active ? 'text-aqua-500' : 'text-darkNavy/30')} />
               </Link>
             );
           })}
+
+          {/* Quick Track Order Link */}
+          <Link
+            to="/track"
+            onClick={onClose}
+            className="flex items-center justify-between min-h-[48px] px-3.5 py-3 rounded-2xl text-sm font-medium text-darkNavy/80 hover:bg-ice-50 hover:text-navy-500"
+          >
+            <div className="flex items-center gap-3">
+              <Search className="w-4 h-4 text-navy-400" />
+              <span>Track Your Order</span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-aqua-100 text-navy-800 border border-aqua-200">
+              Live
+            </span>
+          </Link>
         </nav>
 
-        {/* Bottom Drawer Actions */}
-        <div className="p-5 border-t border-ice-200 bg-ice-50/50 space-y-3">
-          <Link to="/book" onClick={onClose} className="block">
-            <Button size="lg" variant="primary" fullWidth className="gap-2 shadow-md">
-              <CalendarCheck className="w-4 h-4 text-aqua-300" />
-              Schedule Doorstep Pickup
+        {/* Prominent "Book Now" Button & Contact in Drawer Footer */}
+        <div className="p-5 border-t border-ice-200 bg-ice-50/60 space-y-3">
+          <Link to="/book" onClick={onClose} className="block w-full">
+            <Button
+              variant="accent"
+              size="lg"
+              fullWidth
+              className="gap-2.5 font-bold shadow-aqua text-darkNavy py-3.5"
+            >
+              <CalendarCheck className="w-5 h-5 text-darkNavy" />
+              <span>Book Now</span>
             </Button>
           </Link>
 
-          {/* Quick Helpline Hotline */}
-          <div className="text-center pt-1 space-y-1">
+          {/* Kasur Phone Hotline */}
+          <div className="text-center pt-1">
             <a
               href={`tel:${BUSINESS_INFO.phone}`}
               className="inline-flex items-center gap-1.5 text-xs text-navy-600 font-semibold hover:text-navy-900"
             >
               <Phone className="w-3.5 h-3.5 text-aqua-500" />
-              Kasur Hotline: {BUSINESS_INFO.phone}
+              <span>Kasur Helpline: {BUSINESS_INFO.phone}</span>
             </a>
-            <div className="text-[10px] text-darkNavy/50">
-              Open 7 Days a week (8:00 AM – 9:00 PM)
+            <div className="text-[10px] text-darkNavy/50 mt-0.5">
+              Doorstep Pickup Across Kasur City
             </div>
           </div>
         </div>

@@ -1,38 +1,68 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   Menu, 
   MapPin, 
   Phone, 
   User, 
-  Shield, 
   CalendarCheck, 
   Search, 
-  Sparkles,
-  ChevronDown
+  ShieldCheck
 } from 'lucide-react';
+import { Logo } from '@/components/common/Logo';
+import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
 import { BUSINESS_INFO } from '@/utils/constants';
-import { NavLink } from '@/components/ui';
 import { NavigationDrawer } from './NavigationDrawer';
+import { cn } from '@/utils/cn';
 
 export const Header: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
   const { user, logout, isAdmin } = useAuth();
   const location = useLocation();
 
+  // Scroll detection for sticky shadow enhancement
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Desktop navigation links as required by the prompt
   const navLinks = [
     { name: 'Home', path: '/' },
     { name: 'Services', path: '/services' },
+    { name: 'How It Works', path: '/#how-it-works' },
     { name: 'Pricing', path: '/pricing' },
-    { name: 'Track Order', path: '/track' },
     { name: 'About Us', path: '/about' },
     { name: 'Contact', path: '/contact' },
-    { name: 'Design System', path: '/design-system', badge: 'UI Kit' },
   ];
 
+  const handleNavLinkClick = (path: string) => {
+    if (path.includes('#')) {
+      const hash = path.split('#')[1];
+      const el = document.getElementById(hash);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  };
+
+  const isLinkActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/' && !location.hash;
+    }
+    if (path.includes('#')) {
+      return location.hash === `#${path.split('#')[1]}`;
+    }
+    return location.pathname === path;
+  };
+
   return (
-    <header className="sticky top-0 z-50">
+    <header className="sticky top-0 z-50 transition-all duration-200">
       {/* Top Notification / Hotline Strip */}
       <div className="bg-navy-500 text-white text-xs py-1.5 px-4 select-none">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-1.5">
@@ -42,7 +72,7 @@ export const Header: React.FC = () => {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-aqua-400"></span>
             </span>
             <span className="text-[11px] sm:text-xs">
-              Kasur's #1 Doorstep Laundry • Free Pickup & Delivery on orders over PKR 500
+              Kasur's #1 Doorstep Laundry Service • Free Pickup & Delivery on orders over PKR 500
             </span>
           </div>
 
@@ -62,119 +92,123 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Navigation Bar */}
-      <nav className="glass-nav" aria-label="Main Navigation">
+      {/* Main Navigation Bar — Pure White (#FFFFFF) background with subtle shadow */}
+      <nav
+        className={cn(
+          'bg-white border-b border-ice-200/90 transition-shadow duration-200',
+          isScrolled ? 'shadow-md shadow-navy-950/5' : 'shadow-card'
+        )}
+        aria-label="Main Navigation"
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
-            {/* Logo */}
-            <Link to="/" className="flex items-center gap-3 group select-none">
-              <div className="w-11 h-11 rounded-2xl bg-navy-500 flex items-center justify-center shadow-md shadow-navy-500/20 group-hover:bg-navy-600 transition-colors">
-                <svg className="w-7 h-7" viewBox="0 0 100 100" fill="none">
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="32"
-                    stroke="#65B9C5"
-                    strokeWidth="7"
-                    strokeDasharray="140 30"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M50 32C46 38 40 45 40 52C40 57.5 44.5 62 50 62C55.5 62 60 57.5 60 52C60 45 54 38 50 32Z"
-                    fill="#65B9C5"
-                  />
-                  <circle cx="53" cy="48" r="3" fill="#FFFFFF" opacity="0.8" />
-                </svg>
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="font-poppins font-bold text-xl text-navy-500 tracking-tight">Pickup</span>
-                  <span className="font-poppins font-bold text-xl text-aqua-400 tracking-tight">Wash</span>
-                </div>
-                <span className="text-[10px] uppercase font-semibold tracking-wider text-navy-400">Kasur City</span>
-              </div>
-            </Link>
+            {/* 1. Professional Text Logo with Laundry Icon */}
+            <Logo size="md" />
 
-            {/* Desktop Navigation Links */}
+            {/* 2. Desktop Navigation Links */}
             <div className="hidden lg:flex items-center gap-1">
-              {navLinks.map((link) => (
-                <NavLink key={link.path} to={link.path} badge={link.badge}>
-                  {link.name}
-                </NavLink>
-              ))}
+              {navLinks.map((link) => {
+                const active = isLinkActive(link.path);
+                return (
+                  <Link
+                    key={link.name}
+                    to={link.path}
+                    onClick={() => handleNavLinkClick(link.path)}
+                    className={cn(
+                      'relative px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200 select-none',
+                      active
+                        ? 'text-navy-500 bg-ice-100 font-semibold'
+                        : 'text-darkNavy/80 hover:text-navy-500 hover:bg-ice-50'
+                    )}
+                  >
+                    <span>{link.name}</span>
+
+                    {/* Active Aqua Indicator Underline / Dot */}
+                    {active && (
+                      <span
+                        className="absolute bottom-1 left-1/2 -translate-x-1/2 w-4 h-0.5 rounded-full bg-aqua-400"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </Link>
+                );
+              })}
             </div>
 
-            {/* Right Action Buttons */}
+            {/* 3. Right Action Area: Track Order, Customer Account & Prominent "Book Now" Button */}
             <div className="hidden sm:flex items-center gap-3">
+              {/* Track Order Utility */}
               <Link
                 to="/track"
-                className="hidden xl:flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-darkNavy hover:text-navy-500 rounded-lg hover:bg-ice-200/40"
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-darkNavy/80 hover:text-navy-500 rounded-xl hover:bg-ice-50 transition-colors"
+                title="Track existing laundry order"
               >
-                <Search className="w-3.5 h-3.5 text-aqua-500" />
-                Track
+                <Search className="w-3.5 h-3.5 text-aqua-600" />
+                <span>Track Order</span>
               </Link>
 
+              {/* Customer Account / Sign In */}
               {user ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pl-1 border-l border-ice-200">
                   <Link
                     to="/account"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-ice-100 text-darkNavy rounded-xl border border-ice-200 hover:bg-ice-200 transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-ice-50 text-darkNavy rounded-xl border border-ice-200 hover:bg-ice-100 transition-colors"
                   >
                     <User className="w-3.5 h-3.5 text-navy-500" />
-                    Account
+                    <span className="truncate max-w-[100px]">{user.full_name?.split(' ')[0]}</span>
                   </Link>
 
                   {isAdmin && (
                     <Link
                       to="/admin"
-                      className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-navy-50 text-navy-600 rounded-xl border border-navy-200/70 hover:bg-navy-100"
+                      className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-2 bg-navy-50 text-navy-700 rounded-xl border border-navy-200 hover:bg-navy-100"
+                      title="Admin Operations"
                     >
-                      <Shield className="w-3.5 h-3.5 text-navy-500" />
-                      Admin
+                      <ShieldCheck className="w-3.5 h-3.5 text-navy-500" />
+                      <span>Admin</span>
                     </Link>
                   )}
-
-                  <button
-                    type="button"
-                    onClick={logout}
-                    className="text-xs text-navy-400 hover:text-navy-600 hover:underline cursor-pointer pl-1"
-                  >
-                    Sign Out
-                  </button>
                 </div>
               ) : (
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-navy-600 hover:text-navy-800 rounded-xl hover:bg-ice-200/40 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-navy-600 hover:text-navy-900 rounded-xl hover:bg-ice-50 transition-colors"
                 >
                   <User className="w-3.5 h-3.5" />
-                  Sign In
+                  <span>Sign In</span>
                 </Link>
               )}
 
-              <Link
-                to="/book"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-navy-500 text-white font-medium text-sm hover:bg-navy-600 transition-all shadow-sm shadow-navy-500/20 active:scale-95"
-              >
-                <CalendarCheck className="w-4 h-4 text-aqua-300" />
-                Book Pickup
+              {/* Prominent "Book Now" Button using Aqua Accent Colour */}
+              <Link to="/book" className="ml-1">
+                <Button
+                  variant="accent"
+                  size="md"
+                  className="gap-2 font-bold shadow-aqua text-darkNavy active:scale-95 px-5"
+                >
+                  <CalendarCheck className="w-4 h-4 text-darkNavy" />
+                  <span>Book Now</span>
+                </Button>
               </Link>
             </div>
 
-            {/* Mobile Hamburger Drawer Trigger */}
+            {/* 4. Mobile Controls: Quick Book Button + Hamburger Menu Button */}
             <div className="flex lg:hidden items-center gap-2">
-              <Link
-                to="/book"
-                className="sm:hidden px-3.5 py-2 rounded-xl bg-navy-500 text-white font-medium text-xs hover:bg-navy-600"
-              >
-                Book
+              <Link to="/book" className="sm:hidden">
+                <Button
+                  variant="accent"
+                  size="xs"
+                  className="font-bold text-darkNavy px-3 py-2 shadow-sm"
+                >
+                  Book Now
+                </Button>
               </Link>
 
               <button
                 type="button"
                 onClick={() => setIsDrawerOpen(true)}
-                className="w-12 h-12 rounded-2xl flex items-center justify-center text-darkNavy hover:text-navy-900 hover:bg-ice-200/60 focus:outline-none focus:ring-2 focus:ring-aqua-400"
-                aria-label="Open mobile navigation drawer"
+                className="w-12 h-12 rounded-2xl flex items-center justify-center text-darkNavy hover:text-navy-900 hover:bg-ice-100 focus:outline-none focus:ring-2 focus:ring-aqua-400 transition-colors"
+                aria-label="Open navigation menu"
                 aria-expanded={isDrawerOpen}
               >
                 <Menu className="w-6 h-6" />
@@ -184,7 +218,7 @@ export const Header: React.FC = () => {
         </div>
       </nav>
 
-      {/* Slide-over Mobile Navigation Drawer */}
+      {/* 5. Mobile Slide-out Navigation Drawer */}
       <NavigationDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}

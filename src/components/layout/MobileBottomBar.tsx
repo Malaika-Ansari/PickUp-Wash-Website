@@ -40,3 +40,4 @@ export const MobileBottomBar: React.FC = () => {
     </div>
   );
 };
+

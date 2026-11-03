@@ -6,12 +6,19 @@ import { MobileBottomBar } from '@/components/layout/MobileBottomBar';
 import { SystemStatusBanner } from '@/components/common/SystemStatusBanner';
 
 export const RootLayout: React.FC = () => {
-  const { pathname } = useLocation();
+  const location = useLocation();
 
-  // Scroll to top on route change
+  // Scroll to top or target hash element on route change
   useEffect(() => {
+    if (location.hash) {
+      const el = document.getElementById(location.hash.replace('#', ''));
+      if (el) {
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 100);
+        return;
+      }
+    }
     window.scrollTo(0, 0);
-  }, [pathname]);
+  }, [location.pathname, location.hash]);
 
   return (
     <div className="min-h-screen flex flex-col bg-ice-100 text-darkNavy selection:bg-aqua-400 selection:text-white pb-16 sm:pb-0 relative overflow-x-hidden">

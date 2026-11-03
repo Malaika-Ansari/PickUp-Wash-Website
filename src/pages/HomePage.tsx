@@ -150,7 +150,7 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* HOW IT WORKS SECTION */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 scroll-mt-28">
         <div className="text-center max-w-2xl mx-auto mb-16 space-y-3">
           <Badge variant="primary">Simple 4-Step Process</Badge>
           <h2 className="font-poppins text-3xl sm:text-4xl font-bold text-navy-500 tracking-tight">
