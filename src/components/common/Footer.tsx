@@ -16,6 +16,7 @@ export const Footer: React.FC = () => {
     { label: 'Schedule a Pickup', href: '/book' },
     { label: 'Track Your Order Status', href: '/track' },
     { label: 'About Pickup Wash', href: '/about' },
+    { label: 'Frequently Asked Questions', href: '/faq' },
     { label: 'Customer Support', href: '/contact' },
     { label: 'Brand & Design System', href: '/design-system' },
   ];

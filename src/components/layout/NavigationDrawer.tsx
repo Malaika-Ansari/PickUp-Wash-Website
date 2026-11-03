@@ -13,7 +13,8 @@ import {
   ChevronRight, 
   User, 
   LogOut,
-  Sparkles
+  Sparkles,
+  MessageSquare
 } from 'lucide-react';
 import { Logo } from '@/components/common/Logo';
 import { Button } from '@/components/ui/Button';
@@ -42,7 +43,8 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
     { label: 'How It Works', path: '/how-it-works', icon: Sparkles },
     { label: 'Pricing', path: '/pricing', icon: Tag },
     { label: 'About Us', path: '/about', icon: Info },
-    { label: 'Contact', path: '/contact', icon: HelpCircle },
+    { label: 'FAQ', path: '/faq', icon: HelpCircle },
+    { label: 'Contact', path: '/contact', icon: MessageSquare },
   ];
 
   // Close on route change
