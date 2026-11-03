@@ -548,3 +548,4 @@ export const HowItWorksPage: React.FC = () => {
     </div>
   );
 };
+
