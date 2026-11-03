@@ -11,6 +11,7 @@ import { ServicesPage } from '@/pages/ServicesPage';
 import { HowItWorksPage } from '@/pages/HowItWorksPage';
 import { PricingPage } from '@/pages/PricingPage';
 import { BookingPage } from '@/pages/BookingPage';
+import { BookingConfirmationPage } from '@/pages/BookingConfirmationPage';
 import { TrackOrderPage } from '@/pages/TrackOrderPage';
 import { AboutPage } from '@/pages/AboutPage';
 import { ContactPage } from '@/pages/ContactPage';
@@ -50,6 +51,7 @@ export const App: React.FC = () => {
             <Route path="how-it-works" element={<HowItWorksPage />} />
             <Route path="pricing" element={<PricingPage />} />
             <Route path="book" element={<BookingPage />} />
+            <Route path="booking-confirmation" element={<BookingConfirmationPage />} />
             <Route path="track" element={<TrackOrderPage />} />
             <Route path="about" element={<AboutPage />} />
             <Route path="contact" element={<ContactPage />} />

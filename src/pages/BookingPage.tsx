@@ -1,24 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   CalendarCheck,
-  Truck,
   Sparkles,
   Clock,
   MapPin,
   Phone,
   User,
   Mail,
-  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Gift,
-  HelpCircle,
   CreditCard,
   FileText,
-  RotateCcw,
   ArrowRight,
-  Home,
   Layers,
 } from 'lucide-react';
 import { Container } from '@/components/layout/Container';
@@ -28,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS, TIME_SLOTS } from '@/utils/constants';
+import { orderService } from '@/services/orderService';
 
 // Allowed services as requested by the prompt
 type ServiceType = 'Wash & Iron' | 'Express Service' | 'Monthly Package';
@@ -49,13 +45,9 @@ interface BookingFormData {
   agreedToPolicies: boolean;
 }
 
-interface SubmittedBooking extends BookingFormData {
-  submittedAt: string;
-  referenceNumber: string;
-}
-
 export const BookingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Get today's date formatted as YYYY-MM-DD for min date attribute
   const today = new Date().toISOString().split('T')[0];
@@ -84,7 +76,6 @@ export const BookingPage: React.FC = () => {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submittedBooking, setSubmittedBooking] = useState<SubmittedBooking | null>(null);
 
   // Sync service from search params if changed
   useEffect(() => {
@@ -168,8 +159,8 @@ export const BookingPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle Form Submission
-  const handleSubmit = (e: React.FormEvent) => {
+  // Handle Form Submission -> navigates to /booking-confirmation with state
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
@@ -180,39 +171,75 @@ export const BookingPage: React.FC = () => {
 
     setIsSubmitting(true);
 
-    // Safe frontend-only demonstration submission
-    setTimeout(() => {
-      // Generate clean demonstrative reference number
-      const randomCode = Math.floor(1000 + Math.random() * 9000);
-      const ref = `PW-KSR-${randomCode}`;
+    try {
+      // Create local demo order record so tracking works seamlessly
+      const serviceIdMap: Record<ServiceType, string> = {
+        'Wash & Iron': 'wash-and-iron',
+        'Express Service': 'express-service',
+        'Monthly Package': 'monthly-packages',
+      };
 
-      setSubmittedBooking({
-        ...formData,
-        submittedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        referenceNumber: ref,
+      const result = await orderService.createOrder({
+        fullName: formData.fullName,
+        phoneNumber: formData.phoneNumber,
+        email: formData.email,
+        streetAddress: formData.pickupAddress,
+        area: formData.area,
+        serviceId: serviceIdMap[formData.laundryService] || 'wash-and-iron',
+        pickupDate: formData.pickupDate,
+        pickupTimeSlot: formData.pickupTime,
+        specialInstructions: formData.specialInstructions,
+        paymentMethod:
+          formData.paymentMethod === 'Cash on Delivery'
+            ? 'cash_on_delivery'
+            : 'easypaisa_jazzcash',
       });
 
-      setIsSubmitting(false);
-      window.scrollTo({ top: 150, behavior: 'smooth' });
-    }, 600);
-  };
+      const trackingNumber =
+        result.success && result.order ? result.order.trackingNumber : undefined;
 
-  const handleResetForm = () => {
-    setSubmittedBooking(null);
-    setFormData({
-      fullName: '',
-      phoneNumber: '',
-      email: '',
-      pickupAddress: '',
-      area: KASUR_SERVICE_AREAS[0],
-      laundryService: 'Wash & Iron',
-      pickupDate: today,
-      pickupTime: TIME_SLOTS[0],
-      specialInstructions: '',
-      paymentMethod: 'Cash on Delivery',
-      agreedToPolicies: false,
-    });
-    setErrors({});
+      // Safely navigate to confirmation page passing state (not in public URL)
+      navigate('/booking-confirmation', {
+        state: {
+          booking: {
+            fullName: formData.fullName,
+            phoneNumber: formData.phoneNumber,
+            email: formData.email,
+            pickupAddress: `${formData.pickupAddress}, ${formData.area}, Kasur`,
+            area: formData.area,
+            selectedService: formData.laundryService,
+            pickupDate: formData.pickupDate,
+            preferredPickupTime: formData.pickupTime,
+            specialInstructions: formData.specialInstructions,
+            paymentMethod: formData.paymentMethod,
+            submittedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            trackingNumber,
+          },
+        },
+      });
+    } catch (err) {
+      console.error('Error submitting booking:', err);
+      // Fallback navigation with frontend details
+      navigate('/booking-confirmation', {
+        state: {
+          booking: {
+            fullName: formData.fullName,
+            phoneNumber: formData.phoneNumber,
+            email: formData.email,
+            pickupAddress: `${formData.pickupAddress}, ${formData.area}, Kasur`,
+            area: formData.area,
+            selectedService: formData.laundryService,
+            pickupDate: formData.pickupDate,
+            preferredPickupTime: formData.pickupTime,
+            specialInstructions: formData.specialInstructions,
+            paymentMethod: formData.paymentMethod,
+            submittedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        },
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -262,603 +289,459 @@ export const BookingPage: React.FC = () => {
          ========================================================================= */}
       <section>
         <Container size="xl">
-          {submittedBooking ? (
-            /* =========================================================================
-               SUCCESS MESSAGE (Frontend Demonstration Mode)
-               ========================================================================= */
-            <div className="max-w-3xl mx-auto">
-              <div className="bg-white rounded-3xl p-8 sm:p-12 border-2 border-emerald-300 shadow-soft space-y-8 text-center">
-                {/* Checkmark Icon */}
-                <div className="w-20 h-20 rounded-3xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
-                  <CheckCircle2 className="w-12 h-12" />
-                </div>
-
-                <div className="space-y-3">
-                  <span className="inline-block text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-3.5 py-1 rounded-full border border-emerald-200">
-                    Demonstration Request Received
-                  </span>
-
-                  <h2 className="font-poppins font-extrabold text-2xl sm:text-4xl text-navy-500">
-                    Pickup Request Submitted!
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+            
+            {/* Left Column: Form Fields */}
+            <div className="lg:col-span-8">
+              <form
+                onSubmit={handleSubmit}
+                noValidate
+                className="bg-white rounded-3xl p-6 sm:p-10 border border-ice-200 shadow-soft space-y-8"
+              >
+                <div className="border-b border-ice-100 pb-4">
+                  <h2 className="font-poppins font-bold text-2xl text-navy-500">
+                    Customer & Pickup Information
                   </h2>
-
-                  {/* Notice: Transparently explaining frontend demonstration */}
-                  <div className="p-4 rounded-2xl bg-ice-50 border border-ice-200 text-xs sm:text-sm text-darkNavy/80 max-w-xl mx-auto leading-relaxed space-y-1">
-                    <p className="font-semibold text-navy-600">
-                      Frontend Demonstration Confirmation
-                    </p>
-                    <p className="text-darkNavy/70 text-xs">
-                      Backend booking integration is currently in demonstration mode. In live
-                      operations, our Kasur customer team will call your number (
-                      <strong>{submittedBooking.phoneNumber}</strong>) to confirm your pickup slot
-                      and dispatch our rider.
-                    </p>
-                  </div>
+                  <p className="text-xs sm:text-sm text-darkNavy/70 mt-1">
+                    Please enter your contact information and pickup location in Kasur.
+                  </p>
                 </div>
 
-                {/* Reference Code Box */}
-                <div className="p-5 rounded-2xl bg-ice-100/70 border border-ice-200 max-w-md mx-auto space-y-1">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-navy-400 block">
-                    Demo Reference Number
-                  </span>
-                  <span className="font-mono font-extrabold text-2xl text-navy-600 tracking-wider">
-                    {submittedBooking.referenceNumber}
-                  </span>
-                  <span className="text-[11px] text-darkNavy/60 block">
-                    Submitted today at {submittedBooking.submittedAt}
-                  </span>
-                </div>
-
-                {/* Booking Summary Table */}
-                <div className="text-left bg-white rounded-2xl border border-ice-200 p-6 space-y-4 max-w-xl mx-auto">
-                  <h4 className="font-poppins font-bold text-sm text-navy-500 uppercase tracking-wider pb-2 border-b border-ice-100">
-                    Pickup Request Summary
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <span className="text-navy-400 block">Customer Name</span>
-                      <span className="font-semibold text-navy-700">
-                        {submittedBooking.fullName}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-navy-400 block">Phone Number</span>
-                      <span className="font-semibold text-navy-700">
-                        {submittedBooking.phoneNumber}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-navy-400 block">Kasur Locality</span>
-                      <span className="font-semibold text-navy-700">
-                        {submittedBooking.area}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-navy-400 block">Service Selected</span>
-                      <span className="font-semibold text-aqua-700">
-                        {submittedBooking.laundryService}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-navy-400 block">Preferred Date & Time</span>
-                      <span className="font-semibold text-navy-700">
-                        {submittedBooking.pickupDate} ({submittedBooking.pickupTime})
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-navy-400 block">Payment Method</span>
-                      <span className="font-semibold text-emerald-700">
-                        {submittedBooking.paymentMethod}
-                      </span>
-                    </div>
-
-                    <div className="sm:col-span-2 pt-1 border-t border-ice-100">
-                      <span className="text-navy-400 block">Pickup Address</span>
-                      <span className="font-medium text-navy-700">
-                        {submittedBooking.pickupAddress}
-                      </span>
-                    </div>
-
-                    {submittedBooking.specialInstructions && (
-                      <div className="sm:col-span-2 pt-1 border-t border-ice-100">
-                        <span className="text-navy-400 block">Special Instructions</span>
-                        <span className="font-normal text-navy-600 italic">
-                          "{submittedBooking.specialInstructions}"
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Post-Submit Action Buttons */}
-                <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    onClick={handleResetForm}
-                    className="gap-2 text-xs"
-                    leftIcon={<RotateCcw className="w-4 h-4 text-navy-500" />}
+                {/* Summary Error Banner if validation fails */}
+                {Object.keys(errors).length > 0 && (
+                  <div
+                    role="alert"
+                    className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs space-y-1.5"
                   >
-                    Schedule Another Pickup
-                  </Button>
+                    <div className="flex items-center gap-2 font-bold text-red-900">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+                      <span>Please correct the following errors before submitting:</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 pl-2 text-red-700">
+                      {Object.values(errors).map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
-                  <Link to="/">
-                    <Button
-                      variant="primary"
-                      size="md"
-                      className="gap-2 text-xs"
-                      leftIcon={<Home className="w-4 h-4 text-white" />}
+                {/* 1. Customer Full Name & Phone Number */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <FormField
+                    label="Customer Full Name"
+                    required
+                    htmlFor="booking-name"
+                    error={errors.fullName}
+                  >
+                    <Input
+                      id="booking-name"
+                      type="text"
+                      required
+                      placeholder="e.g. Muhammad Ahmad"
+                      value={formData.fullName}
+                      onChange={(e) => handleInputChange('fullName', e.target.value)}
+                      leftIcon={<User className="w-4 h-4" />}
+                      isError={Boolean(errors.fullName)}
+                    />
+                  </FormField>
+
+                  <FormField
+                    label="Phone Number"
+                    required
+                    htmlFor="booking-phone"
+                    hint="Kasur mobile number"
+                    error={errors.phoneNumber}
+                  >
+                    <Input
+                      id="booking-phone"
+                      type="tel"
+                      required
+                      placeholder="e.g. 0300 1234567"
+                      value={formData.phoneNumber}
+                      onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
+                      leftIcon={<Phone className="w-4 h-4" />}
+                      isError={Boolean(errors.phoneNumber)}
+                    />
+                  </FormField>
+                </div>
+
+                {/* 2. Email Address (Optional) */}
+                <FormField
+                  label="Email Address"
+                  htmlFor="booking-email"
+                  hint="Optional for receipts"
+                  error={errors.email}
+                >
+                  <Input
+                    id="booking-email"
+                    type="email"
+                    placeholder="customer@example.com (optional)"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    leftIcon={<Mail className="w-4 h-4" />}
+                    isError={Boolean(errors.email)}
+                  />
+                </FormField>
+
+                {/* 3. Kasur Locality & Pickup Address */}
+                <div className="space-y-5 pt-2 border-t border-ice-100">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <FormField
+                      label="Area / Locality in Kasur"
+                      required
+                      htmlFor="booking-area"
+                      error={errors.area}
                     >
-                      Return to Homepage
+                      <Select
+                        id="booking-area"
+                        required
+                        value={formData.area}
+                        onChange={(e) => handleInputChange('area', e.target.value)}
+                        leftIcon={<MapPin className="w-4 h-4" />}
+                      >
+                        {KASUR_SERVICE_AREAS.map((loc) => (
+                          <option key={loc} value={loc}>
+                            {loc}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormField>
+
+                    <div className="flex flex-col justify-end">
+                      <span className="text-[11px] text-darkNavy/65 bg-ice-50 p-2.5 rounded-xl border border-ice-200 leading-normal">
+                        📍 Riders cover all Kasur neighborhoods daily with morning and evening rounds.
+                      </span>
+                    </div>
+                  </div>
+
+                  <FormField
+                    label="Pickup Address"
+                    required
+                    htmlFor="booking-address"
+                    hint="House #, Street #, Nearest Landmark"
+                    error={errors.pickupAddress}
+                  >
+                    <Textarea
+                      id="booking-address"
+                      required
+                      rows={2}
+                      placeholder="e.g. House #14, Street 2, Model Town, near PSO Petrol Pump"
+                      value={formData.pickupAddress}
+                      onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
+                      isError={Boolean(errors.pickupAddress)}
+                    />
+                  </FormField>
+                </div>
+
+                {/* 4. Laundry Service Selector */}
+                <div className="space-y-3 pt-2 border-t border-ice-100">
+                  <label className="block text-xs font-semibold text-darkNavy uppercase tracking-wider select-none">
+                    Laundry Service *
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {[
+                      {
+                        id: 'Wash & Iron',
+                        title: 'Wash & Iron',
+                        desc: 'Complete washing, steam ironing & neat folding',
+                        icon: Sparkles,
+                      },
+                      {
+                        id: 'Express Service',
+                        title: 'Express Service',
+                        desc: 'Priority expedited turnaround for urgent needs',
+                        icon: Clock,
+                      },
+                      {
+                        id: 'Monthly Package',
+                        title: 'Monthly Package',
+                        desc: 'Scheduled weekly plan for households',
+                        icon: Layers,
+                      },
+                    ].map((srv) => {
+                      const Icon = srv.icon;
+                      const isSelected = formData.laundryService === srv.id;
+
+                      return (
+                        <div
+                          key={srv.id}
+                          onClick={() => handleInputChange('laundryService', srv.id as ServiceType)}
+                          className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-aqua-400 bg-aqua-50/50 ring-2 ring-aqua-400/30 shadow-sm'
+                              : 'border-ice-200 bg-white hover:border-ice-300'
+                          }`}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                                  isSelected
+                                    ? 'bg-aqua-400 text-darkNavy'
+                                    : 'bg-ice-100 text-navy-500'
+                                }`}
+                              >
+                                <Icon className="w-5 h-5" />
+                              </div>
+                              <input
+                                type="radio"
+                                name="laundryServiceRadio"
+                                checked={isSelected}
+                                onChange={() => handleInputChange('laundryService', srv.id as ServiceType)}
+                                className="text-aqua-600 focus:ring-aqua-400"
+                              />
+                            </div>
+
+                            <h4 className="font-poppins font-bold text-sm text-navy-500">
+                              {srv.title}
+                            </h4>
+                            <p className="text-[11px] text-darkNavy/70 leading-normal">
+                              {srv.desc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 5. Preferred Pickup Date & Time */}
+                <div className="space-y-4 pt-2 border-t border-ice-100">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <FormField
+                      label="Preferred Pickup Date"
+                      required
+                      htmlFor="booking-date"
+                      error={errors.pickupDate}
+                    >
+                      <Input
+                        id="booking-date"
+                        type="date"
+                        required
+                        min={today}
+                        value={formData.pickupDate}
+                        onChange={(e) => handleInputChange('pickupDate', e.target.value)}
+                        leftIcon={<CalendarCheck className="w-4 h-4" />}
+                        isError={Boolean(errors.pickupDate)}
+                      />
+                    </FormField>
+
+                    <FormField
+                      label="Preferred Pickup Time"
+                      required
+                      htmlFor="booking-time"
+                      error={errors.pickupTime}
+                    >
+                      <Select
+                        id="booking-time"
+                        required
+                        value={formData.pickupTime}
+                        onChange={(e) => handleInputChange('pickupTime', e.target.value)}
+                        leftIcon={<Clock className="w-4 h-4" />}
+                      >
+                        {TIME_SLOTS.map((slot) => (
+                          <option key={slot} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* 6. Special Instructions (Optional) */}
+                <div className="pt-2 border-t border-ice-100">
+                  <FormField
+                    label="Special Instructions"
+                    htmlFor="booking-instructions"
+                    hint="Optional"
+                  >
+                    <Textarea
+                      id="booking-instructions"
+                      rows={2}
+                      placeholder="e.g. Extra care for lawn suit embroidery, delivery on hangers, gate access code..."
+                      value={formData.specialInstructions}
+                      onChange={(e) =>
+                        handleInputChange('specialInstructions', e.target.value)
+                      }
+                    />
+                  </FormField>
+                </div>
+
+                {/* 7. Agreement Checkbox (Required) */}
+                <div className="pt-4 border-t border-ice-100">
+                  <label
+                    className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                      errors.agreedToPolicies
+                        ? 'border-red-300 bg-red-50/30'
+                        : formData.agreedToPolicies
+                        ? 'border-aqua-300 bg-aqua-50/20'
+                        : 'border-ice-200 bg-ice-50/50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.agreedToPolicies}
+                      onChange={(e) => handleInputChange('agreedToPolicies', e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border-ice-300 text-aqua-600 focus:ring-aqua-400"
+                    />
+                    <div className="text-xs text-darkNavy/80 leading-normal">
+                      <span className="font-semibold text-navy-600">
+                        I agree to the booking details and service policies.
+                      </span>{' '}
+                      I understand that service rates will be confirmed prior to washing and no
+                      advance payment is required until safe delivery.
+                    </div>
+                  </label>
+
+                  {errors.agreedToPolicies && (
+                    <p className="text-xs text-red-600 font-medium mt-1.5 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{errors.agreedToPolicies}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* 8. Submit Button */}
+                <div className="pt-2">
+                  <Button
+                    type="submit"
+                    variant="accent"
+                    size="lg"
+                    fullWidth
+                    isLoading={isSubmitting}
+                    className="font-bold text-darkNavy shadow-aqua text-base py-4"
+                    leftIcon={<CalendarCheck className="w-5 h-5 text-darkNavy" />}
+                  >
+                    Confirm Doorstep Pickup
+                  </Button>
+                  <p className="text-[11px] text-center text-darkNavy/60 mt-2.5">
+                    🔒 Your details are safe with Pickup Wash. Free cancellation anytime within 3 hours.
+                  </p>
+                </div>
+              </form>
+            </div>
+
+            {/* Right Column: Booking Information & Policies */}
+            <div className="lg:col-span-4 space-y-6">
+              
+              {/* 1. Free First Pickup Banner */}
+              <div className="bg-white rounded-3xl p-6 border-2 border-aqua-300 shadow-soft relative overflow-hidden">
+                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-aqua-100/50 rounded-full blur-xl pointer-events-none" />
+
+                <div className="relative z-10 space-y-3">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aqua-50 text-aqua-800 text-xs font-bold border border-aqua-200">
+                    <Gift className="w-4 h-4 text-aqua-600" />
+                    <span>Welcome Promotion</span>
+                  </div>
+
+                  <h3 className="font-poppins font-extrabold text-xl text-navy-500">
+                    Your First Pickup is FREE!
+                  </h3>
+
+                  <p className="text-xs text-darkNavy/75 leading-relaxed font-inter">
+                    We want every household in Kasur to experience hassle-free laundry. Enjoy zero
+                    doorstep pickup charges on your eligible first booking.
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. Rates Confirmation Notice */}
+              <div className="bg-white rounded-3xl p-6 border border-ice-200 shadow-soft space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-ice-100 text-navy-500 flex items-center justify-center shrink-0">
+                    <FileText className="w-4 h-4 text-aqua-600" />
+                  </div>
+                  <h4 className="font-poppins font-bold text-sm text-navy-500">
+                    Service Rate Confirmation
+                  </h4>
+                </div>
+
+                <p className="text-xs text-darkNavy/75 leading-relaxed font-inter">
+                  Current per-kilo and itemized service rates can be confirmed by contacting Pickup
+                  Wash directly. Our rider will weigh or count your garments transparently at your
+                  doorstep before processing.
+                </p>
+
+                <div className="pt-1">
+                  <Link
+                    to="/pricing"
+                    className="inline-flex items-center gap-1 text-xs font-bold text-navy-600 hover:text-aqua-600 transition-colors"
+                  >
+                    <span>View Pricing & Packages</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+
+              {/* 3. Available Payment Methods */}
+              <div className="bg-white rounded-3xl p-6 border border-ice-200 shadow-soft space-y-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-ice-100 text-navy-500 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-poppins font-bold text-sm text-navy-500">
+                      Accepted Payment Methods
+                    </h4>
+                    <p className="text-[11px] text-darkNavy/65">Pay upon safe delivery</p>
+                  </div>
+                </div>
+
+                <ul className="space-y-2 text-xs text-darkNavy/80">
+                  <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-navy-600">Cash on Delivery (COD)</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-navy-600">JazzCash Digital Wallet</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-navy-600">Easypaisa Digital Wallet</span>
+                  </li>
+                  <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-navy-600">Direct Bank Transfer</span>
+                  </li>
+                </ul>
+                <p className="text-[11px] text-darkNavy/60 leading-normal">
+                  * No advance payment is required. You only pay after your clothes are washed,
+                  ironed, and delivered to your hands.
+                </p>
+              </div>
+
+              {/* 4. Need Assistance Helpline Card */}
+              <div className="bg-navy-500 text-white rounded-3xl p-6 shadow-soft space-y-3">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-aqua-300">
+                  Kasur Customer Support
+                </span>
+                <h4 className="font-poppins font-bold text-base text-white">
+                  Need Help with Your Booking?
+                </h4>
+                <p className="text-xs text-ice-200/90 leading-relaxed">
+                  Have questions about specific fabric care or monthly household packages? Our team
+                  is here to help.
+                </p>
+                <div className="pt-1">
+                  <Link to="/contact">
+                    <Button
+                      size="sm"
+                      variant="accent"
+                      fullWidth
+                      className="text-darkNavy font-bold shadow-aqua"
+                    >
+                      Contact Customer Support
                     </Button>
                   </Link>
                 </div>
               </div>
-            </div>
-          ) : (
-            /* =========================================================================
-               THE BOOKING FORM (2 Columns: Form Fields + Booking Information)
-               ========================================================================= */
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-              
-              {/* Left Column: Form Fields */}
-              <div className="lg:col-span-8">
-                <form
-                  onSubmit={handleSubmit}
-                  noValidate
-                  className="bg-white rounded-3xl p-6 sm:p-10 border border-ice-200 shadow-soft space-y-8"
-                >
-                  <div className="border-b border-ice-100 pb-4">
-                    <h2 className="font-poppins font-bold text-2xl text-navy-500">
-                      Customer & Pickup Information
-                    </h2>
-                    <p className="text-xs sm:text-sm text-darkNavy/70 mt-1">
-                      Please enter your contact information and pickup location in Kasur.
-                    </p>
-                  </div>
-
-                  {/* Summary Error Banner if validation fails */}
-                  {Object.keys(errors).length > 0 && (
-                    <div
-                      role="alert"
-                      className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs space-y-1.5"
-                    >
-                      <div className="flex items-center gap-2 font-bold text-red-900">
-                        <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-                        <span>Please correct the following errors before submitting:</span>
-                      </div>
-                      <ul className="list-disc list-inside space-y-1 pl-2 text-red-700">
-                        {Object.values(errors).map((err, i) => (
-                          <li key={i}>{err}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* 1. Customer Full Name & Phone Number */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <FormField
-                      label="Customer Full Name"
-                      required
-                      htmlFor="booking-name"
-                      error={errors.fullName}
-                    >
-                      <Input
-                        id="booking-name"
-                        type="text"
-                        required
-                        placeholder="e.g. Muhammad Ahmad"
-                        value={formData.fullName}
-                        onChange={(e) => handleInputChange('fullName', e.target.value)}
-                        leftIcon={<User className="w-4 h-4" />}
-                        isError={Boolean(errors.fullName)}
-                      />
-                    </FormField>
-
-                    <FormField
-                      label="Phone Number"
-                      required
-                      htmlFor="booking-phone"
-                      hint="Kasur mobile number"
-                      error={errors.phoneNumber}
-                    >
-                      <Input
-                        id="booking-phone"
-                        type="tel"
-                        required
-                        placeholder="e.g. 0300 1234567"
-                        value={formData.phoneNumber}
-                        onChange={(e) => handleInputChange('phoneNumber', e.target.value)}
-                        leftIcon={<Phone className="w-4 h-4" />}
-                        isError={Boolean(errors.phoneNumber)}
-                      />
-                    </FormField>
-                  </div>
-
-                  {/* 2. Email Address (Optional) */}
-                  <FormField
-                    label="Email Address"
-                    htmlFor="booking-email"
-                    hint="Optional for receipts"
-                    error={errors.email}
-                  >
-                    <Input
-                      id="booking-email"
-                      type="email"
-                      placeholder="customer@example.com (optional)"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange('email', e.target.value)}
-                      leftIcon={<Mail className="w-4 h-4" />}
-                      isError={Boolean(errors.email)}
-                    />
-                  </FormField>
-
-                  {/* 3. Kasur Locality & Pickup Address */}
-                  <div className="space-y-5 pt-2 border-t border-ice-100">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                      <FormField
-                        label="Area / Locality in Kasur"
-                        required
-                        htmlFor="booking-area"
-                        error={errors.area}
-                      >
-                        <Select
-                          id="booking-area"
-                          required
-                          value={formData.area}
-                          onChange={(e) => handleInputChange('area', e.target.value)}
-                          leftIcon={<MapPin className="w-4 h-4" />}
-                        >
-                          {KASUR_SERVICE_AREAS.map((loc) => (
-                            <option key={loc} value={loc}>
-                              {loc}
-                            </option>
-                          ))}
-                        </Select>
-                      </FormField>
-
-                      <div className="flex flex-col justify-end">
-                        <span className="text-[11px] text-darkNavy/65 bg-ice-50 p-2.5 rounded-xl border border-ice-200 leading-normal">
-                          📍 Riders cover all Kasur neighborhoods daily with morning and evening rounds.
-                        </span>
-                      </div>
-                    </div>
-
-                    <FormField
-                      label="Pickup Address"
-                      required
-                      htmlFor="booking-address"
-                      hint="House #, Street #, Nearest Landmark"
-                      error={errors.pickupAddress}
-                    >
-                      <Textarea
-                        id="booking-address"
-                        required
-                        rows={2}
-                        placeholder="e.g. House #14, Street 2, Model Town, near PSO Petrol Pump"
-                        value={formData.pickupAddress}
-                        onChange={(e) => handleInputChange('pickupAddress', e.target.value)}
-                        isError={Boolean(errors.pickupAddress)}
-                      />
-                    </FormField>
-                  </div>
-
-                  {/* 4. Laundry Service Selector */}
-                  <div className="space-y-3 pt-2 border-t border-ice-100">
-                    <label className="block text-xs font-semibold text-darkNavy uppercase tracking-wider select-none">
-                      Laundry Service *
-                    </label>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      {[
-                        {
-                          id: 'Wash & Iron',
-                          title: 'Wash & Iron',
-                          desc: 'Complete washing, steam ironing & neat folding',
-                          icon: Sparkles,
-                        },
-                        {
-                          id: 'Express Service',
-                          title: 'Express Service',
-                          desc: 'Priority expedited turnaround for urgent needs',
-                          icon: Clock,
-                        },
-                        {
-                          id: 'Monthly Package',
-                          title: 'Monthly Package',
-                          desc: 'Scheduled weekly plan for households',
-                          icon: Layers,
-                        },
-                      ].map((srv) => {
-                        const Icon = srv.icon;
-                        const isSelected = formData.laundryService === srv.id;
-
-                        return (
-                          <div
-                            key={srv.id}
-                            onClick={() => handleInputChange('laundryService', srv.id)}
-                            className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
-                              isSelected
-                                ? 'border-aqua-400 bg-aqua-50/50 ring-2 ring-aqua-400/30 shadow-sm'
-                                : 'border-ice-200 bg-white hover:border-ice-300'
-                            }`}
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <div
-                                  className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                                    isSelected
-                                      ? 'bg-aqua-400 text-darkNavy'
-                                      : 'bg-ice-100 text-navy-500'
-                                  }`}
-                                >
-                                  <Icon className="w-5 h-5" />
-                                </div>
-                                <input
-                                  type="radio"
-                                  name="laundryServiceRadio"
-                                  checked={isSelected}
-                                  onChange={() => handleInputChange('laundryService', srv.id)}
-                                  className="text-aqua-600 focus:ring-aqua-400"
-                                />
-                              </div>
-
-                              <h4 className="font-poppins font-bold text-sm text-navy-500">
-                                {srv.title}
-                              </h4>
-                              <p className="text-[11px] text-darkNavy/70 leading-normal">
-                                {srv.desc}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* 5. Preferred Pickup Date & Time */}
-                  <div className="space-y-4 pt-2 border-t border-ice-100">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                      <FormField
-                        label="Preferred Pickup Date"
-                        required
-                        htmlFor="booking-date"
-                        error={errors.pickupDate}
-                      >
-                        <Input
-                          id="booking-date"
-                          type="date"
-                          required
-                          min={today}
-                          value={formData.pickupDate}
-                          onChange={(e) => handleInputChange('pickupDate', e.target.value)}
-                          leftIcon={<CalendarCheck className="w-4 h-4" />}
-                          isError={Boolean(errors.pickupDate)}
-                        />
-                      </FormField>
-
-                      <FormField
-                        label="Preferred Pickup Time"
-                        required
-                        htmlFor="booking-time"
-                        error={errors.pickupTime}
-                      >
-                        <Select
-                          id="booking-time"
-                          required
-                          value={formData.pickupTime}
-                          onChange={(e) => handleInputChange('pickupTime', e.target.value)}
-                          leftIcon={<Clock className="w-4 h-4" />}
-                        >
-                          {TIME_SLOTS.map((slot) => (
-                            <option key={slot} value={slot}>
-                              {slot}
-                            </option>
-                          ))}
-                        </Select>
-                      </FormField>
-                    </div>
-                  </div>
-
-                  {/* 6. Special Instructions (Optional) */}
-                  <div className="pt-2 border-t border-ice-100">
-                    <FormField
-                      label="Special Instructions"
-                      htmlFor="booking-instructions"
-                      hint="Optional"
-                    >
-                      <Textarea
-                        id="booking-instructions"
-                        rows={2}
-                        placeholder="e.g. Extra care for lawn suit embroidery, delivery on hangers, gate access code..."
-                        value={formData.specialInstructions}
-                        onChange={(e) =>
-                          handleInputChange('specialInstructions', e.target.value)
-                        }
-                      />
-                    </FormField>
-                  </div>
-
-                  {/* 7. Agreement Checkbox (Required) */}
-                  <div className="pt-4 border-t border-ice-100">
-                    <label
-                      className={`flex items-start gap-3 p-3.5 rounded-2xl border transition-all cursor-pointer ${
-                        errors.agreedToPolicies
-                          ? 'border-red-300 bg-red-50/30'
-                          : formData.agreedToPolicies
-                          ? 'border-aqua-300 bg-aqua-50/20'
-                          : 'border-ice-200 bg-ice-50/50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.agreedToPolicies}
-                        onChange={(e) => handleInputChange('agreedToPolicies', e.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-ice-300 text-aqua-600 focus:ring-aqua-400"
-                      />
-                      <div className="text-xs text-darkNavy/80 leading-normal">
-                        <span className="font-semibold text-navy-600">
-                          I agree to the booking details and service policies.
-                        </span>{' '}
-                        I understand that service rates will be confirmed prior to washing and no
-                        advance payment is required until safe delivery.
-                      </div>
-                    </label>
-
-                    {errors.agreedToPolicies && (
-                      <p className="text-xs text-red-600 font-medium mt-1.5 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                        <span>{errors.agreedToPolicies}</span>
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 8. Submit Button */}
-                  <div className="pt-2">
-                    <Button
-                      type="submit"
-                      variant="accent"
-                      size="lg"
-                      fullWidth
-                      isLoading={isSubmitting}
-                      className="font-bold text-darkNavy shadow-aqua text-base py-4"
-                      leftIcon={<CalendarCheck className="w-5 h-5 text-darkNavy" />}
-                    >
-                      Confirm Doorstep Pickup
-                    </Button>
-                    <p className="text-[11px] text-center text-darkNavy/60 mt-2.5">
-                      🔒 Your details are safe with Pickup Wash. Free cancellation anytime within 3 hours.
-                    </p>
-                  </div>
-                </form>
-              </div>
-
-              {/* Right Column: Booking Information & Policies */}
-              <div className="lg:col-span-4 space-y-6">
-                
-                {/* 1. Free First Pickup Banner */}
-                <div className="bg-white rounded-3xl p-6 border-2 border-aqua-300 shadow-soft relative overflow-hidden">
-                  <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-aqua-100/50 rounded-full blur-xl pointer-events-none" />
-
-                  <div className="relative z-10 space-y-3">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aqua-50 text-aqua-800 text-xs font-bold border border-aqua-200">
-                      <Gift className="w-4 h-4 text-aqua-600" />
-                      <span>Welcome Promotion</span>
-                    </div>
-
-                    <h3 className="font-poppins font-extrabold text-xl text-navy-500">
-                      Your First Pickup is FREE!
-                    </h3>
-
-                    <p className="text-xs text-darkNavy/75 leading-relaxed font-inter">
-                      We want every household in Kasur to experience hassle-free laundry. Enjoy zero
-                      doorstep pickup charges on your eligible first booking.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 2. Rates Confirmation Notice */}
-                <div className="bg-white rounded-3xl p-6 border border-ice-200 shadow-soft space-y-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-ice-100 text-navy-500 flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-aqua-600" />
-                    </div>
-                    <h4 className="font-poppins font-bold text-sm text-navy-500">
-                      Service Rate Confirmation
-                    </h4>
-                  </div>
-
-                  <p className="text-xs text-darkNavy/75 leading-relaxed font-inter">
-                    Current per-kilo and itemized service rates can be confirmed by contacting Pickup
-                    Wash directly. Our rider will weigh or count your garments transparently at your
-                    doorstep before processing.
-                  </p>
-
-                  <div className="pt-1">
-                    <Link
-                      to="/pricing"
-                      className="inline-flex items-center gap-1 text-xs font-bold text-navy-600 hover:text-aqua-600 transition-colors"
-                    >
-                      <span>View Pricing & Packages</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                </div>
-
-                {/* 3. Available Payment Methods */}
-                <div className="bg-white rounded-3xl p-6 border border-ice-200 shadow-soft space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-ice-100 text-navy-500 flex items-center justify-center shrink-0">
-                      <CreditCard className="w-4 h-4 text-emerald-600" />
-                    </div>
-                    <div>
-                      <h4 className="font-poppins font-bold text-sm text-navy-500">
-                        Accepted Payment Methods
-                      </h4>
-                      <p className="text-[11px] text-darkNavy/65">Pay upon safe delivery</p>
-                    </div>
-                  </div>
-
-                  <ul className="space-y-2 text-xs text-darkNavy/80">
-                    <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="font-semibold text-navy-600">Cash on Delivery (COD)</span>
-                    </li>
-                    <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="font-semibold text-navy-600">JazzCash Digital Wallet</span>
-                    </li>
-                    <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="font-semibold text-navy-600">Easypaisa Digital Wallet</span>
-                    </li>
-                    <li className="flex items-center gap-2.5 p-2 rounded-xl bg-ice-50/70 border border-ice-200/80">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span className="font-semibold text-navy-600">Direct Bank Transfer</span>
-                    </li>
-                  </ul>
-                  <p className="text-[11px] text-darkNavy/60 leading-normal">
-                    * No advance payment is required. You only pay after your clothes are washed,
-                    ironed, and delivered to your hands.
-                  </p>
-                </div>
-
-                {/* 4. Need Assistance Helpline Card */}
-                <div className="bg-navy-500 text-white rounded-3xl p-6 shadow-soft space-y-3">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-aqua-300">
-                    Kasur Customer Support
-                  </span>
-                  <h4 className="font-poppins font-bold text-base text-white">
-                    Need Help with Your Booking?
-                  </h4>
-                  <p className="text-xs text-ice-200/90 leading-relaxed">
-                    Have questions about specific fabric care or monthly household packages? Our team
-                    is here to help.
-                  </p>
-                  <div className="pt-1">
-                    <Link to="/contact">
-                      <Button
-                        size="sm"
-                        variant="accent"
-                        fullWidth
-                        className="text-darkNavy font-bold shadow-aqua"
-                      >
-                        Contact Customer Support
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-
-              </div>
 
             </div>
-          )}
+
+          </div>
         </Container>
       </section>
     </div>
