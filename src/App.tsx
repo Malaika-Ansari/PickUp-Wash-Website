@@ -8,6 +8,7 @@ import { CustomerLayout } from '@/layouts/CustomerLayout';
 // Pages
 import { HomePage } from '@/pages/HomePage';
 import { ServicesPage } from '@/pages/ServicesPage';
+import { HowItWorksPage } from '@/pages/HowItWorksPage';
 import { PricingPage } from '@/pages/PricingPage';
 import { BookingPage } from '@/pages/BookingPage';
 import { TrackOrderPage } from '@/pages/TrackOrderPage';
@@ -45,6 +46,7 @@ export const App: React.FC = () => {
           <Route path="/" element={<RootLayout />}>
             <Route index element={<HomePage />} />
             <Route path="services" element={<ServicesPage />} />
+            <Route path="how-it-works" element={<HowItWorksPage />} />
             <Route path="pricing" element={<PricingPage />} />
             <Route path="book" element={<BookingPage />} />
             <Route path="track" element={<TrackOrderPage />} />

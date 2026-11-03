@@ -80,6 +80,14 @@ export const HomePage: React.FC = () => {
             );
           })}
         </div>
+
+        <div className="mt-10 text-center">
+          <Link to="/how-it-works">
+            <Button variant="outline" size="sm" rightIcon={<ArrowRight className="w-4 h-4" />}>
+              Explore Complete 4-Step Process & Benefits
+            </Button>
+          </Link>
+        </div>
       </section>
 
       {/* FEATURED SERVICES & PRICING PREVIEW */}

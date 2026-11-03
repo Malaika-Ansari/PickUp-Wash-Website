@@ -11,6 +11,7 @@ import { BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
 export const Footer: React.FC = () => {
   const quickLinks = [
     { label: 'Our Services & Rates', href: '/services' },
+    { label: 'How It Works', href: '/how-it-works' },
     { label: 'Pricing & Plans', href: '/pricing' },
     { label: 'Schedule a Pickup', href: '/book' },
     { label: 'Track Your Order Status', href: '/track' },

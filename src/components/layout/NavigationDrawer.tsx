@@ -39,7 +39,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   const navItems = [
     { label: 'Home', path: '/', icon: Home },
     { label: 'Services', path: '/services', icon: Layers },
-    { label: 'How It Works', path: '/#how-it-works', icon: Sparkles },
+    { label: 'How It Works', path: '/how-it-works', icon: Sparkles },
     { label: 'Pricing', path: '/pricing', icon: Tag },
     { label: 'About Us', path: '/about', icon: Info },
     { label: 'Contact', path: '/contact', icon: HelpCircle },
