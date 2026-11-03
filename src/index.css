@@ -3,34 +3,94 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --color-navy: #173B57;
+    --color-ice: #EAF3F8;
+    --color-aqua: #65B9C5;
+    --color-white: #FFFFFF;
+    --color-dark-navy: #102B40;
+    --font-heading: 'Poppins', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
   html {
     scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
   }
   
   body {
     background-color: #EAF3F8;
-    color: #173B57;
+    color: #102B40; /* Dark Navy for optimal contrast */
     font-family: 'Inter', sans-serif;
+    line-height: 1.5;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Poppins', sans-serif;
+    color: #102B40;
+    letter-spacing: -0.015em;
   }
 }
 
-/* Glassmorphism & Custom Accents */
+/* Glassmorphism Navigation */
 .glass-nav {
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(23, 59, 87, 0.08);
 }
 
-.subtle-gradient {
-  background: linear-gradient(135deg, #173B57 0%, #1d496c 100%);
+/* Gradients */
+.brand-gradient {
+  background: linear-gradient(135deg, #173B57 0%, #102B40 100%);
+}
+
+.aqua-gradient {
+  background: linear-gradient(135deg, #65B9C5 0%, #4aa4b1 100%);
 }
 
 .ice-card-gradient {
   background: linear-gradient(180deg, #FFFFFF 0%, #F5F9FC 100%);
 }
 
+/* Custom laundry visual aesthetics */
+.laundry-bubble-bg {
+  position: relative;
+  overflow: hidden;
+}
+
+.laundry-bubble-bg::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, rgba(101, 185, 197, 0.15) 0%, rgba(234, 243, 248, 0) 70%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Accessible focus ring */
+.focus-ring {
+  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-aqua-400 focus-visible:ring-offset-2;
+}
+
+/* Scrollbar aesthetic */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #EAF3F8;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bad4e6;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5a99c0;
+}

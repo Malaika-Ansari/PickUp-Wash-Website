@@ -16,6 +16,7 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { DesignSystemPage } from '@/pages/DesignSystemPage';
 
 // Admin Route Guard
 const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -47,6 +48,7 @@ export const App: React.FC = () => {
             <Route path="track" element={<TrackOrderPage />} />
             <Route path="about" element={<AboutPage />} />
             <Route path="contact" element={<ContactPage />} />
+            <Route path="design-system" element={<DesignSystemPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
             <Route path="*" element={<NotFoundPage />} />
