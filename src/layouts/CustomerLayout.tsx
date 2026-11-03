@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { 
   Package, 
   Clock, 
@@ -20,9 +20,22 @@ import { Button } from '@/components/ui/Button';
 import { cn } from '@/utils/cn';
 
 export const CustomerLayout: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Redirect unauthenticated customers away from protected customer pages
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ice-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-navy-500"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
 
   const handleLogout = async () => {
     await logout();
