@@ -9,7 +9,9 @@ import {
   CalendarCheck, 
   HelpCircle,
   ChevronRight,
-  ShieldCheck
+  ShieldCheck,
+  Search,
+  LayoutDashboard
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Header } from '@/components/layout/Header';
@@ -43,10 +45,11 @@ export const CustomerLayout: React.FC = () => {
   };
 
   const customerNav = [
-    { label: 'Active Bookings', path: '/account', icon: Package },
-    { label: 'Order History', path: '/account/history', icon: Clock },
-    { label: 'Kasur Addresses', path: '/account/addresses', icon: MapPin },
-    { label: 'Profile Settings', path: '/account/profile', icon: User },
+    { label: 'Overview', path: '/account', icon: LayoutDashboard },
+    { label: 'My Bookings', path: '/account/history', icon: Package },
+    { label: 'Track Order', path: '/track', icon: Search },
+    { label: 'My Profile', path: '/account/profile', icon: User },
+    { label: 'Help & Support', path: '/contact', icon: HelpCircle },
   ];
 
   return (
@@ -129,7 +132,7 @@ export const CustomerLayout: React.FC = () => {
                     className="flex items-center gap-2.5 min-h-[44px] px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium text-red-600 hover:bg-red-50 transition-colors w-full text-left cursor-pointer"
                   >
                     <LogOut className="w-4 h-4 text-red-500" />
-                    <span>Sign Out</span>
+                    <span>Logout</span>
                   </button>
                 </div>
               </div>

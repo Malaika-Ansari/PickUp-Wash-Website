@@ -138,6 +138,68 @@ export const orderService = {
     return match || null;
   },
 
+  async getCustomerOrders(
+    userId?: string,
+    customerPhone?: string,
+    customerEmail?: string
+  ): Promise<Order[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        let query = supabase.from('orders').select('*');
+        if (userId) {
+          query = query.eq('user_id', userId);
+        } else if (customerPhone) {
+          query = query.eq('customer_phone', customerPhone);
+        } else {
+          return [];
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+
+        if (data && !error) {
+          return data.map((d) => ({
+            id: d.id,
+            trackingNumber: d.tracking_number,
+            userId: d.user_id,
+            customerName: d.customer_name,
+            customerPhone: d.customer_phone,
+            pickupAddress: d.pickup_address,
+            area: d.area,
+            pickupDate: d.pickup_date,
+            pickupTimeSlot: d.pickup_time_slot,
+            status: d.status,
+            items: [
+              {
+                serviceId: d.service_id || 'wash-and-iron',
+                serviceTitle: d.service_title || 'Wash & Iron',
+                quantity: 1,
+                unitPrice: d.total_amount || 0,
+                totalPrice: d.total_amount || 0,
+              },
+            ],
+            totalAmount: d.total_amount,
+            specialInstructions: d.special_instructions,
+            paymentMethod: d.payment_method,
+            paymentStatus: d.payment_status,
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+          }));
+        }
+      } catch (err) {
+        console.warn('Error fetching customer orders from Supabase:', err);
+      }
+    }
+
+    // Filter local orders strictly for the authenticated customer only
+    const local = getLocalOrders();
+    return local.filter((o) => {
+      if (userId && o.userId === userId) return true;
+      if (customerPhone && o.customerPhone && o.customerPhone === customerPhone) return true;
+      if (customerEmail && o.customerPhone && o.customerPhone.includes(customerEmail)) return true;
+      return false;
+    });
+  },
+
   async getAllOrders(): Promise<Order[]> {
     if (isSupabaseConfigured()) {
       try {
