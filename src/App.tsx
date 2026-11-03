@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { RootLayout } from '@/layouts/RootLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
+import { CustomerLayout } from '@/layouts/CustomerLayout';
 
 // Pages
 import { HomePage } from '@/pages/HomePage';
@@ -17,6 +18,8 @@ import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { AdminDashboardPage } from '@/pages/admin/AdminDashboardPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { DesignSystemPage } from '@/pages/DesignSystemPage';
+import { CustomerAccountPage } from '@/pages/CustomerAccountPage';
+import { ResponsivePreviewPage } from '@/pages/ResponsivePreviewPage';
 
 // Admin Route Guard
 const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -30,7 +33,6 @@ const ProtectedAdminRoute: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }
 
-  // Allow access for testing/demo or if user role is admin
   return <>{children}</>;
 };
 
@@ -39,7 +41,7 @@ export const App: React.FC = () => {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public Root Layout */}
+          {/* 1. Public Root Layout */}
           <Route path="/" element={<RootLayout />}>
             <Route index element={<HomePage />} />
             <Route path="services" element={<ServicesPage />} />
@@ -49,12 +51,21 @@ export const App: React.FC = () => {
             <Route path="about" element={<AboutPage />} />
             <Route path="contact" element={<ContactPage />} />
             <Route path="design-system" element={<DesignSystemPage />} />
+            <Route path="responsive-preview" element={<ResponsivePreviewPage />} />
             <Route path="login" element={<LoginPage />} />
             <Route path="register" element={<RegisterPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
 
-          {/* Admin Protected Layout */}
+          {/* 2. Customer Account Layout */}
+          <Route path="/account" element={<CustomerLayout />}>
+            <Route index element={<CustomerAccountPage />} />
+            <Route path="history" element={<CustomerAccountPage />} />
+            <Route path="addresses" element={<CustomerAccountPage />} />
+            <Route path="profile" element={<CustomerAccountPage />} />
+          </Route>
+
+          {/* 3. Admin Protected Operations Layout */}
           <Route
             path="/admin"
             element={
@@ -72,4 +83,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-

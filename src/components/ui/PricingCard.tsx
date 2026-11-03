@@ -105,3 +105,4 @@ export const PricingCard: React.FC<PricingCardProps> = ({
     </div>
   );
 };
+
