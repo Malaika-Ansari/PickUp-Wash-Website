@@ -1,11 +1,18 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { paymentService } from './paymentService';
+import { notificationService } from './notificationService';
 import {
   BookingRecord,
   BookingStatusHistoryRecord,
   CreateBookingPayload,
   PolicyCheckResult,
 } from '@/types';
+import {
+  sanitizeText,
+  sanitizeReference,
+  sanitizeDatabaseError,
+  securityRateLimiter,
+} from '@/utils/securityUtils';
 
 const LOCAL_STORAGE_BOOKINGS_KEY = 'pickupwash_bookings_cache';
 
@@ -154,8 +161,14 @@ export const bookingService = {
       };
     }
 
+    // Input Sanitization: Strip dangerous HTML/scripts and enforce bounds
+    const cleanAddress = sanitizeText(payload.pickup_address, 250);
+    const cleanArea = sanitizeText(payload.area, 100);
+    const cleanInstructions = payload.special_instructions ? sanitizeText(payload.special_instructions, 500) : null;
+    const cleanBookingRef = sanitizeReference(payload.booking_reference) || this.generateBookingReference();
+
     // Prevent duplicate rapid submissions (within 5 seconds)
-    const submissionFingerprint = `${payload.customer_id || 'guest'}_${payload.pickup_date}_${payload.pickup_time}_${payload.pickup_address}`;
+    const submissionFingerprint = `${payload.customer_id || 'guest'}_${payload.pickup_date}_${payload.pickup_time}_${cleanAddress}`;
     if (recentSubmissions.has(submissionFingerprint)) {
       return {
         success: false,
@@ -165,19 +178,25 @@ export const bookingService = {
     recentSubmissions.add(submissionFingerprint);
     setTimeout(() => recentSubmissions.delete(submissionFingerprint), 5000);
 
-    const bookingReference =
-      payload.booking_reference || this.generateBookingReference();
+    // Rate Limiting check
+    const rateCheck = securityRateLimiter.checkLimit('booking_submit', payload.customer_id || 'guest');
+    if (!rateCheck.allowed) {
+      return {
+        success: false,
+        error: `Submission limit reached. Please wait ${rateCheck.retryAfterSeconds} seconds before creating another booking.`,
+      };
+    }
 
     const newRecord: BookingRecord = {
       id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
       customer_id: payload.customer_id || null,
-      booking_reference: bookingReference,
+      booking_reference: cleanBookingRef,
       service_type: payload.service_type,
-      pickup_address: payload.pickup_address,
-      area: payload.area,
+      pickup_address: cleanAddress,
+      area: cleanArea,
       pickup_date: payload.pickup_date,
       pickup_time: payload.pickup_time,
-      special_instructions: payload.special_instructions || null,
+      special_instructions: cleanInstructions,
       payment_method: payload.payment_method || 'Cash on Delivery',
       payment_status: 'Pending',
       booking_status: 'Request Received',
@@ -187,6 +206,8 @@ export const bookingService = {
 
     if (isSupabaseConfigured()) {
       try {
+        securityRateLimiter.recordAttempt('booking_submit', payload.customer_id || 'guest');
+
         const { data, error } = await supabase
           .from('bookings')
           .insert([
@@ -211,7 +232,7 @@ export const bookingService = {
           console.error('Supabase booking creation error:', error.message);
           return {
             success: false,
-            error: error.message || 'Failed to submit booking request to database.',
+            error: sanitizeDatabaseError(error),
           };
         }
 
@@ -231,6 +252,15 @@ export const bookingService = {
           });
         } catch (paymentErr) {
           console.warn('Initial payment record creation notice:', paymentErr);
+        }
+
+        // Generate in-app customer notification
+        if (inserted.customer_id) {
+          try {
+            await notificationService.notifyBookingCreated(inserted);
+          } catch (notifErr) {
+            console.warn('Notification trigger notice:', notifErr);
+          }
         }
 
         return { success: true, booking: inserted };
@@ -260,6 +290,15 @@ export const bookingService = {
       });
     } catch (e) {
       console.warn('Local payment record fallback notice:', e);
+    }
+
+    // Local notification creation
+    if (newRecord.customer_id) {
+      try {
+        notificationService.notifyBookingCreated(newRecord);
+      } catch (e) {
+        console.warn('Local notification fallback notice:', e);
+      }
     }
 
     return { success: true, booking: newRecord };
@@ -423,13 +462,27 @@ export const bookingService = {
           .order('changed_at', { ascending: true });
 
         if (error) {
-          return { history: [], error: error.message };
+          console.warn('Error reading booking_status_history from Supabase:', error.message);
+        } else if (data && data.length > 0) {
+          return { history: data as BookingStatusHistoryRecord[] };
         }
-
-        return { history: (data as BookingStatusHistoryRecord[]) || [] };
       } catch (err: any) {
-        return { history: [], error: err.message };
+        console.warn('Network issue reading booking_status_history:', err);
       }
+    }
+
+    // Fallback to local history cache
+    try {
+      const raw = localStorage.getItem('pickupwash_status_history_cache');
+      if (raw) {
+        const list = JSON.parse(raw) as BookingStatusHistoryRecord[];
+        const matched = list.filter((h) => h.booking_id === bookingId);
+        if (matched.length > 0) {
+          return { history: matched.sort((a, b) => new Date(a.changed_at).getTime() - new Date(b.changed_at).getTime()) };
+        }
+      }
+    } catch {
+      // Ignore cache parse error
     }
 
     return { history: [] };
@@ -503,6 +556,14 @@ export const bookingService = {
         );
         saveLocalBookings(updated);
 
+        // In-app cancellation notification
+        if (booking.customer_id) {
+          notificationService.notifyBookingStatusUpdated(
+            { ...booking, cancellation_reason: reason },
+            'Cancelled'
+          ).catch((e) => console.warn('Cancel notif error:', e));
+        }
+
         return {
           success: true,
           approved: true,
@@ -531,6 +592,13 @@ export const bookingService = {
         : b
     );
     saveLocalBookings(updated);
+
+    if (booking.customer_id) {
+      notificationService.notifyBookingStatusUpdated(
+        { ...booking, cancellation_reason: reason },
+        'Cancelled'
+      ).catch((e) => console.warn('Cancel notif error:', e));
+    }
 
     return {
       success: true,
@@ -624,6 +692,15 @@ export const bookingService = {
         );
         saveLocalBookings(updated);
 
+        // In-app reschedule notification
+        if (booking.customer_id) {
+          notificationService.notifyBookingRescheduled({
+            ...booking,
+            pickup_date: newDate,
+            pickup_time: newTime,
+          }).catch((e) => console.warn('Reschedule notif error:', e));
+        }
+
         return {
           success: true,
           approved: true,
@@ -655,6 +732,14 @@ export const bookingService = {
         : b
     );
     saveLocalBookings(updated);
+
+    if (booking.customer_id) {
+      notificationService.notifyBookingRescheduled({
+        ...booking,
+        pickup_date: newDate,
+        pickup_time: newTime,
+      }).catch((e) => console.warn('Reschedule notif error:', e));
+    }
 
     return {
       success: true,

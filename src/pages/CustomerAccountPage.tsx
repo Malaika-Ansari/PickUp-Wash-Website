@@ -28,18 +28,23 @@ import {
   Receipt,
   Send,
   Check,
+  Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { NotificationCenter } from '@/components/notifications/NotificationCenter';
 import { useAuth } from '@/hooks/useAuth';
 import { orderService } from '@/services/orderService';
 import { bookingService } from '@/services/bookingService';
 import { paymentService } from '@/services/paymentService';
+import { notificationService } from '@/services/notificationService';
 import { Order, PaymentRecord } from '@/types';
 import { TIME_SLOTS, BUSINESS_INFO } from '@/utils/constants';
+import { SEO } from '@/components/common/SEO';
 
 export const CustomerAccountPage: React.FC = () => {
   const { user, isConfigured, updateProfile } = useAuth();
@@ -84,6 +89,31 @@ export const CustomerAccountPage: React.FC = () => {
   const [tidNotesInput, setTidNotesInput] = useState('');
   const [isSubmittingTid, setIsSubmittingTid] = useState(false);
   const [paymentFeedback, setPaymentFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
+
+  // Notification State
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  const fetchUnreadCount = () => {
+    if (user?.id) {
+      notificationService.getUnreadCount(user.id).then(setUnreadCount).catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    fetchUnreadCount();
+  }, [user?.id, location.pathname]);
+
+  const handleSelectBookingFromNotification = (bookingId: string) => {
+    const matched = bookings.find((b) => b.id === bookingId);
+    if (matched) {
+      handleOpenDetails(matched);
+    } else {
+      orderService.getAllOrders().then((all) => {
+        const found = all.find((o) => o.id === bookingId);
+        if (found) handleOpenDetails(found);
+      });
+    }
+  };
 
   // Update profile data if user changes
   useEffect(() => {
@@ -319,45 +349,90 @@ export const CustomerAccountPage: React.FC = () => {
 
   const isProfileTab = location.pathname.includes('/profile');
   const isHistoryTab = location.pathname.includes('/history');
+  const isNotificationsTab = location.pathname.includes('/notifications');
 
   return (
     <div className="space-y-8">
-      {/* =========================================================================
-          1. DASHBOARD WELCOME SECTION
-         ========================================================================= */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-ice-200 shadow-soft">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-ice-200">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-ice-100 text-aqua-700 text-xs font-bold uppercase tracking-wider mb-1">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Customer Dashboard</span>
+      <SEO
+        title="Customer Account Dashboard"
+        description="Manage your bookings, submit payment references, track pickups, and update your delivery address in Kasur."
+      />
+      {isNotificationsTab ? (
+        <NotificationCenter onSelectBooking={handleSelectBookingFromNotification} />
+      ) : (
+        <>
+          {/* =========================================================================
+              1. DASHBOARD WELCOME SECTION
+             ========================================================================= */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-ice-200 shadow-soft">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-ice-200">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-ice-100 text-aqua-700 text-xs font-bold uppercase tracking-wider mb-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Customer Dashboard</span>
+                </div>
+
+                {/* Welcome Back Heading & Customer Name */}
+                <h1 className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-500 tracking-tight">
+                  Welcome Back, {user?.full_name || 'Customer'}!
+                </h1>
+
+                {/* Short Supporting Message */}
+                <p className="text-xs sm:text-sm text-darkNavy/75 font-inter">
+                  Manage your laundry bookings easily from one place.
+                </p>
+              </div>
+
+              {/* Action Buttons: Alerts Bell & Prominent "Book a Pickup" Button */}
+              <div className="shrink-0 flex items-center gap-3">
+                <Link
+                  to="/account/notifications"
+                  className="relative p-2.5 rounded-2xl bg-ice-100 text-navy-700 hover:bg-ice-200 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+                  title="View all notifications"
+                >
+                  <Bell className="w-4 h-4 text-aqua-600" />
+                  <span className="hidden sm:inline">Alerts</span>
+                  {unreadCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-aqua-400 text-darkNavy">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Link>
+
+                <Link to="/book">
+                  <Button
+                    size="md"
+                    variant="accent"
+                    className="gap-2 font-bold shadow-aqua text-darkNavy hover:text-white"
+                    leftIcon={<CalendarCheck className="w-4 h-4 text-darkNavy" />}
+                  >
+                    Book a Pickup
+                  </Button>
+                </Link>
+              </div>
             </div>
 
-            {/* Welcome Back Heading & Customer Name */}
-            <h1 className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-500 tracking-tight">
-              Welcome Back, {user?.full_name || 'Customer'}!
-            </h1>
-
-            {/* Short Supporting Message */}
-            <p className="text-xs sm:text-sm text-darkNavy/75 font-inter">
-              Manage your laundry bookings easily from one place.
-            </p>
-          </div>
-
-          {/* Prominent "Book a Pickup" Button */}
-          <div className="shrink-0">
-            <Link to="/book">
-              <Button
-                size="md"
-                variant="accent"
-                className="gap-2 font-bold shadow-aqua text-darkNavy hover:text-white"
-                leftIcon={<CalendarCheck className="w-4 h-4 text-darkNavy" />}
-              >
-                Book a Pickup
-              </Button>
-            </Link>
-          </div>
-        </div>
+            {/* Unread Notifications Banner (If any unread) */}
+            {unreadCount > 0 && (
+              <div className="mt-4 p-3.5 rounded-2xl bg-aqua-50/80 border border-aqua-200 text-xs text-darkNavy/80 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-2 w-2 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-aqua-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-aqua-500"></span>
+                  </span>
+                  <span className="font-semibold text-navy-900">
+                    You have {unreadCount} new notification{unreadCount > 1 ? 's' : ''} regarding your laundry pickups in Kasur.
+                  </span>
+                </div>
+                <Link
+                  to="/account/notifications"
+                  className="font-bold text-aqua-700 hover:text-aqua-800 flex items-center gap-1 shrink-0 text-xs"
+                >
+                  <span>Review Alerts</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            )}
 
         {/* Backend Status Clarification (If Supabase is not configured) */}
         {!isConfigured && (
@@ -783,6 +858,8 @@ export const CustomerAccountPage: React.FC = () => {
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* =========================================================================
           BOOKING DETAILS MODAL

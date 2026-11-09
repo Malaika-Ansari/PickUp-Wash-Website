@@ -22,6 +22,7 @@ import {
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
+import { SEO } from '@/components/common/SEO';
 
 export const AboutPage: React.FC = () => {
   // Why Choose Pickup Wash 4 Core Pillars from requirement
@@ -123,6 +124,10 @@ export const AboutPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="About Us & Our Laundry Promise"
+        description="Learn about Pickup Wash Kasur: our dedication to fabric care hygiene, segregated washing cycles, and doorstep convenience for Pakistani households."
+      />
       {/* =========================================================================
           1. ABOUT US HERO SECTION
          ========================================================================= */}

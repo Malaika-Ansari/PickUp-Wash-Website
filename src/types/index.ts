@@ -80,6 +80,7 @@ export interface Order {
   userId?: string;
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   pickupAddress: string;
   area: string;
   pickupDate: string;
@@ -169,7 +170,40 @@ export interface ServiceRecord {
   slug: string;
   description: string;
   is_active: boolean;
+  price_per_kg?: number | null;
+  base_price?: number | null;
+  special_charge?: number | null;
+  price_unit?: string | null;
+  is_pricing_active?: boolean;
+  pricing_notes?: string | null;
+  turnaround_time?: string | null;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface ServicePricingRecord {
+  id: string;
+  service_id: string;
+  title: string;
+  pricing_type: 'per_kg' | 'per_item' | 'special_charge' | 'fixed';
+  rate: number | null;
+  unit: string;
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface PromotionRecord {
+  id: string;
+  promo_code: string;
+  title: string;
+  description: string;
+  discount_type: 'free_pickup' | 'percentage' | 'fixed';
+  is_active: boolean;
+  terms?: string | null;
+  created_at: string;
+  updated_at?: string;
 }
 
 export interface MonthlyPackageRecord {
@@ -180,6 +214,7 @@ export interface MonthlyPackageRecord {
   price: number | null; // Nullable until confirmed with business in Kasur
   is_active: boolean;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface BookingStatusHistoryRecord {
@@ -253,3 +288,51 @@ export const normalizePaymentStatus = (
       return 'Pending';
   }
 };
+
+export type NotificationType =
+  | 'booking_status'
+  | 'payment_status'
+  | 'cancellation'
+  | 'reschedule'
+  | 'system';
+
+export interface NotificationRecord {
+  id: string;
+  customer_id: string;
+  booking_id?: string | null;
+  title: string;
+  message: string;
+  notification_type: NotificationType;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface CreateNotificationPayload {
+  customer_id: string;
+  booking_id?: string | null;
+  title: string;
+  message: string;
+  notification_type: NotificationType;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  admin_id?: string | null;
+  admin_email?: string | null;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  details?: Record<string, any> | string | null;
+  ip_address?: string | null;
+  created_at: string;
+}
+
+export interface CreateAdminAuditLogPayload {
+  admin_id?: string | null;
+  admin_email?: string | null;
+  action: string;
+  entity_type: string;
+  entity_id?: string | null;
+  details?: Record<string, any> | string | null;
+  ip_address?: string | null;
+}

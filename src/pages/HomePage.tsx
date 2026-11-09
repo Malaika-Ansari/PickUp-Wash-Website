@@ -18,11 +18,16 @@ import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { HeroSection } from '@/components/home/HeroSection';
+import { SEO } from '@/components/common/SEO';
 import { CORE_SERVICES, BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
 
 export const HomePage: React.FC = () => {
   return (
     <div className="space-y-16 sm:space-y-20 pb-20">
+      <SEO
+        title="Doorstep Laundry Pickup & Delivery in Kasur"
+        description="Convenient laundry pickup and delivery in Kasur City. We collect clothes from your doorstep, wash, steam iron, and return within 24-48 hours. Free pickup on eligible first orders."
+      />
       {/* 1. HERO SECTION */}
       <HeroSection />
 

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node src/test/bookingTestRunner.mjs && node src/test/paymentTestRunner.mjs"
+    "test": "node src/test/bookingTestRunner.mjs && node src/test/paymentTestRunner.mjs && node src/test/notificationTestRunner.mjs && node src/test/adminAuthTestRunner.mjs && node src/test/adminDashboardTestRunner.mjs && node src/test/adminBookingManagementTestRunner.mjs && node src/test/adminServicesPricingTestRunner.mjs && node src/test/adminReportsAnalyticsTestRunner.mjs && node src/test/securityAuditRlsTestRunner.mjs && node src/test/applicationSecurityAuditTestRunner.mjs && node src/test/fullAppQaAuditTestRunner.mjs && node src/test/deploymentReadinessTestRunner.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.1",

@@ -1,5 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { bookingService } from './bookingService';
+import { notificationService } from './notificationService';
+import { authService } from './authService';
 import {
   BookingFormData,
   Order,
@@ -44,12 +46,14 @@ const mapBookingStatusToLegacy = (status: BookingStatus | string): OrderStatus =
 
 // Convert BookingRecord to Order interface
 const bookingRecordToOrder = (record: BookingRecord): Order => {
+  const profileData = (record as any).profiles;
   return {
     id: record.id,
     trackingNumber: record.booking_reference,
     userId: record.customer_id || undefined,
-    customerName: 'Customer', // Populated by caller when joining with profiles
-    customerPhone: '',
+    customerName: profileData?.full_name || (record as any).customer_name || 'Customer',
+    customerPhone: profileData?.phone || (record as any).customer_phone || '',
+    customerEmail: profileData?.email || (record as any).customer_email || undefined,
     pickupAddress: record.pickup_address,
     area: record.area,
     pickupDate: record.pickup_date,
@@ -194,11 +198,11 @@ export const orderService = {
       try {
         const { data, error } = await supabase
           .from('bookings')
-          .select('*')
+          .select('*, profiles:customer_id(full_name, phone, email)')
           .order('created_at', { ascending: false });
 
         if (data && !error) {
-          return (data as BookingRecord[]).map(bookingRecordToOrder);
+          return (data as any[]).map(bookingRecordToOrder);
         }
       } catch (err) {
         console.warn('Error fetching all orders from Supabase:', err);
@@ -219,11 +223,13 @@ export const orderService = {
   },
 
   /**
-   * Admin: Update order status
+   * Admin: Update order status, record cancellation reason and log status history
    */
   async updateOrderStatus(
     trackingNumber: string,
-    newStatus: OrderStatus | BookingStatus
+    newStatus: OrderStatus | BookingStatus,
+    cancellationReason?: string,
+    adminNotes?: string
   ): Promise<boolean> {
     const statusMap: Record<string, BookingStatus> = {
       pending_pickup: 'Booking Request Received',
@@ -239,14 +245,31 @@ export const orderService = {
     const targetBookingStatus: BookingStatus =
       statusMap[newStatus] || (newStatus as BookingStatus);
 
+    let targetBooking: BookingRecord | null = null;
+    let prevStatus = 'Request Received';
+
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await supabase
-          .from('bookings')
-          .update({ booking_status: targetBookingStatus })
-          .eq('booking_reference', trackingNumber);
+        const updatePayload: any = {
+          booking_status: targetBookingStatus,
+          updated_at: new Date().toISOString(),
+        };
 
-        if (!error) return true;
+        if (targetBookingStatus === 'Cancelled' && cancellationReason) {
+          updatePayload.cancellation_reason = cancellationReason.trim();
+          updatePayload.cancelled_at = new Date().toISOString();
+        }
+
+        const { data, error } = await supabase
+          .from('bookings')
+          .update(updatePayload)
+          .eq('booking_reference', trackingNumber)
+          .select()
+          .single();
+
+        if (!error && data) {
+          targetBooking = data as BookingRecord;
+        }
       } catch (err) {
         console.warn('Error updating status in Supabase:', err);
       }
@@ -257,17 +280,79 @@ export const orderService = {
     if (raw) {
       try {
         const list = JSON.parse(raw) as BookingRecord[];
-        const updated = list.map((b) =>
-          b.booking_reference === trackingNumber
-            ? { ...b, booking_status: targetBookingStatus }
-            : b
-        );
+        const updated = list.map((b) => {
+          if (b.booking_reference === trackingNumber) {
+            prevStatus = b.booking_status;
+            const updatedBooking: BookingRecord = {
+              ...b,
+              booking_status: targetBookingStatus,
+              ...(targetBookingStatus === 'Cancelled' && cancellationReason
+                ? {
+                    cancellation_reason: cancellationReason.trim(),
+                    cancelled_at: new Date().toISOString(),
+                  }
+                : {}),
+              updated_at: new Date().toISOString(),
+            };
+            if (!targetBooking) targetBooking = updatedBooking;
+            return updatedBooking;
+          }
+          return b;
+        });
         localStorage.setItem('pickupwash_bookings_cache', JSON.stringify(updated));
-        return true;
-      } catch {
-        return false;
+      } catch (e) {
+        console.warn('Local cache update notice:', e);
       }
     }
+
+    // Record local status history cache (for offline/test environments)
+    if (targetBooking) {
+      try {
+        const histRaw = localStorage.getItem('pickupwash_status_history_cache');
+        const histList = histRaw ? JSON.parse(histRaw) : [];
+        histList.push({
+          id: 'hist-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
+          booking_id: targetBooking.id,
+          previous_status: prevStatus,
+          new_status: targetBookingStatus,
+          changed_at: new Date().toISOString(),
+          notes:
+            targetBookingStatus === 'Cancelled' && cancellationReason
+              ? `Cancellation Reason: ${cancellationReason}`
+              : adminNotes || `Status updated from ${prevStatus} to ${targetBookingStatus}`,
+        });
+        localStorage.setItem('pickupwash_status_history_cache', JSON.stringify(histList));
+      } catch (e) {
+        console.warn('Local history cache error:', e);
+      }
+    }
+
+    // Trigger in-app notification for the customer
+    if (targetBooking && targetBooking.customer_id) {
+      try {
+        if (cancellationReason) {
+          targetBooking.cancellation_reason = cancellationReason;
+        }
+        notificationService.notifyBookingStatusUpdated(targetBooking, targetBookingStatus);
+      } catch (notifErr) {
+        console.warn('Status notification error:', notifErr);
+      }
+    }
+
+    // Record administrative audit trail
+    authService.logAdminAction({
+      action: 'update_order_status',
+      entity_type: 'booking',
+      entity_id: trackingNumber,
+      details: {
+        previous_status: prevStatus,
+        new_status: targetBookingStatus,
+        booking_reference: trackingNumber,
+        cancellation_reason: cancellationReason || undefined,
+        notes: adminNotes || undefined,
+      },
+    }).catch((e) => console.warn('Order status audit log notice:', e));
+
     return true;
   },
 };

@@ -1,10 +1,18 @@
 import { supabase, isSupabaseConfigured } from './supabase';
+import { notificationService } from './notificationService';
+import { authService } from './authService';
 import {
   PaymentRecord,
   CreatePaymentPayload,
   PaymentStatus,
   normalizePaymentStatus,
 } from '@/types';
+import {
+  sanitizeReference,
+  sanitizeText,
+  sanitizeDatabaseError,
+  securityRateLimiter,
+} from '@/utils/securityUtils';
 
 const LOCAL_STORAGE_PAYMENTS_KEY = 'pickupwash_payments_cache';
 
@@ -167,20 +175,32 @@ export const paymentService = {
     transactionReference?: string,
     notes?: string
   ): Promise<{ success: boolean; payment?: PaymentRecord; error?: string }> {
-    const cleanRef = transactionReference?.trim();
+    const cleanRef = sanitizeReference(transactionReference);
     if (!cleanRef) {
-      return { success: false, error: 'Transaction reference / ID is required.' };
+      return { success: false, error: 'Valid transaction reference / ID is required.' };
     }
 
+    // Rate Limiting: Prevent repeated TID submission flooding
+    const rateCheck = securityRateLimiter.checkLimit('tid_submit', paymentId);
+    if (!rateCheck.allowed) {
+      return {
+        success: false,
+        error: `Too many submissions. Please wait ${rateCheck.retryAfterSeconds} seconds before submitting again.`,
+      };
+    }
+
+    const cleanNotes = notes ? sanitizeText(notes, 300) : null;
     const updatedAt = new Date().toISOString();
 
     if (isSupabaseConfigured()) {
       try {
+        securityRateLimiter.recordAttempt('tid_submit', paymentId);
+
         let query = supabase
           .from('payments')
           .update({
             transaction_reference: cleanRef,
-            payment_notes: notes?.trim() || null,
+            payment_notes: cleanNotes,
             payment_status: 'Awaiting Verification',
             updated_at: updatedAt,
           })
@@ -195,7 +215,7 @@ export const paymentService = {
         if (error) {
           return {
             success: false,
-            error: error.message || 'Failed to submit transaction reference for verification.',
+            error: sanitizeDatabaseError(error),
           };
         }
 
@@ -203,11 +223,16 @@ export const paymentService = {
         const local = getLocalPayments();
         saveLocalPayments(local.map((p) => (p.id === paymentId ? updated : p)));
 
+        // Trigger in-app payment notification
+        notificationService.notifyPaymentStatusUpdated(updated).catch((e) =>
+          console.warn('Payment notif error:', e)
+        );
+
         return { success: true, payment: updated };
       } catch (err: any) {
         return {
           success: false,
-          error: err.message || 'Network error submitting transaction reference.',
+          error: sanitizeDatabaseError(err),
         };
       }
     }
@@ -222,12 +247,17 @@ export const paymentService = {
     const updated: PaymentRecord = {
       ...target,
       transaction_reference: cleanRef,
-      payment_notes: notes?.trim() || target.payment_notes,
+      payment_notes: cleanNotes || target.payment_notes,
       payment_status: 'Awaiting Verification',
       updated_at: updatedAt,
     };
 
     saveLocalPayments(local.map((p) => (p.id === paymentId ? updated : p)));
+
+    notificationService.notifyPaymentStatusUpdated(updated).catch((e) =>
+      console.warn('Payment notif error:', e)
+    );
+
     return { success: true, payment: updated };
   },
 
@@ -307,6 +337,24 @@ export const paymentService = {
         const local = getLocalPayments();
         saveLocalPayments(local.map((p) => (p.id === paymentId ? updated : p)));
 
+        // Trigger in-app payment verification notification
+        notificationService.notifyPaymentStatusUpdated(updated).catch((e) =>
+          console.warn('Payment verify notif error:', e)
+        );
+
+        // Record administrative audit trail
+        authService.logAdminAction({
+          admin_id: adminId,
+          action: 'verify_payment',
+          entity_type: 'payment',
+          entity_id: paymentId,
+          details: {
+            status,
+            amount,
+            transactionReference,
+          },
+        }).catch((e) => console.warn('Payment audit log notice:', e));
+
         return { success: true, payment: updated };
       } catch (err: any) {
         return {
@@ -338,6 +386,23 @@ export const paymentService = {
     };
 
     saveLocalPayments(local.map((p) => (p.id === paymentId ? updated : p)));
+
+    notificationService.notifyPaymentStatusUpdated(updated).catch((e) =>
+      console.warn('Payment verify notif error:', e)
+    );
+
+    authService.logAdminAction({
+      admin_id: adminId,
+      action: 'verify_payment',
+      entity_type: 'payment',
+      entity_id: paymentId,
+      details: {
+        status,
+        amount,
+        transactionReference,
+      },
+    }).catch((e) => console.warn('Payment audit log notice:', e));
+
     return { success: true, payment: updated };
   },
 };

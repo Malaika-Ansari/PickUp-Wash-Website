@@ -1,17 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { orderService } from '@/services/orderService';
 import { paymentService } from '@/services/paymentService';
+import { profileService } from '@/services/profileService';
+import { catalogService } from '@/services/catalogService';
+import { notificationService } from '@/services/notificationService';
+import { authService } from '@/services/authService';
 import { useAuth } from '@/hooks/useAuth';
-import { Order, OrderStatus, PaymentRecord, PaymentStatus } from '@/types';
+import { 
+  Order, 
+  OrderStatus, 
+  PaymentRecord, 
+  PaymentStatus, 
+  ProfileRecord, 
+  ServiceRecord, 
+  MonthlyPackageRecord, 
+  NotificationRecord, 
+  AdminAuditLog 
+} from '@/types';
 import { ORDER_STATUS_LABELS } from '@/utils/constants';
 import { Card } from '@/components/common/Card';
 import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
+import { SEO } from '@/components/common/SEO';
 import { 
   ShoppingBag, 
   Truck, 
   Clock, 
-  CheckCircle, 
+  CheckCircle2, 
   Search, 
   Filter, 
   RefreshCw,
@@ -21,35 +37,71 @@ import {
   CreditCard,
   DollarSign,
   ShieldCheck,
-  CheckCircle2,
   AlertCircle,
   X,
   FileText,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Eye,
+  Users,
+  Sliders,
+  Bell,
+  BarChart3,
+  Settings,
+  Sparkles,
+  TrendingUp,
+  ChevronRight
 } from 'lucide-react';
+import { AdminBookingDetailsModal } from '@/components/admin/AdminBookingDetailsModal';
+import { AdminBookingsManager } from '@/components/admin/AdminBookingsManager';
+import { AdminAnalyticsCharts } from '@/components/admin/AdminAnalyticsCharts';
+import { AdminReportsDashboard } from '@/components/admin/AdminReportsDashboard';
+import { AdminCustomerDirectory } from '@/components/admin/AdminCustomerDirectory';
+import { AdminServicesManager } from '@/components/admin/AdminServicesManager';
+import { AdminNotificationsViewer } from '@/components/admin/AdminNotificationsViewer';
 
 export const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Navigation tab: 'orders' | 'payments'
-  const [activeTab, setActiveTab] = useState<'orders' | 'payments'>('orders');
+  // Active navigation tab from URL search param (defaults to 'overview')
+  const activeTab = searchParams.get('tab') || 'overview';
 
-  // Orders State
+  const handleTabChange = (tab: string) => {
+    setSearchParams({ tab });
+  };
+
+  // =========================================================================
+  // Primary State (Real database records)
+  // =========================================================================
   const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(true);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [customers, setCustomers] = useState<ProfileRecord[]>([]);
+  const [services, setServices] = useState<ServiceRecord[]>([]);
+  const [packages, setPackages] = useState<MonthlyPackageRecord[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+
+  // Loading & Error States
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+
+  // Filter & Search states for Orders
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // Payments State
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [isLoadingPayments, setIsLoadingPayments] = useState(true);
+  // Filter & Search states for Payments
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
 
-  // Payment Verification Modal State
+  // Audit Logs Search
+  const [auditSearch, setAuditSearch] = useState('');
+
+  // Modals State
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
   const [verifyStatus, setVerifyStatus] = useState<PaymentStatus>('Paid');
   const [verifyAmount, setVerifyAmount] = useState<string>('');
@@ -58,43 +110,107 @@ export const AdminDashboardPage: React.FC = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyFeedback, setVerifyFeedback] = useState<{ success?: boolean; message?: string } | null>(null);
 
-  // Load orders
-  const fetchOrders = async () => {
-    setIsLoadingOrders(true);
-    try {
-      const data = await orderService.getAllOrders();
-      setOrders(data);
-    } catch (err) {
-      console.error('Error fetching admin orders:', err);
-    } finally {
-      setIsLoadingOrders(false);
+  // =========================================================================
+  // Data Fetching: Retrieve all real records from Supabase
+  // =========================================================================
+  const fetchAllData = useCallback(async (isRefreshAction = false) => {
+    if (isRefreshAction) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoadingData(true);
     }
-  };
+    setDataError(null);
 
-  // Load payments
-  const fetchPayments = async () => {
-    setIsLoadingPayments(true);
     try {
-      const res = await paymentService.getAllPayments();
-      setPayments(res.payments || []);
-    } catch (err) {
-      console.error('Error fetching payments:', err);
-    } finally {
-      setIsLoadingPayments(false);
-    }
-  };
+      const [
+        ordersRes,
+        paymentsRes,
+        customersRes,
+        servicesRes,
+        packagesRes,
+        notifsRes,
+        auditRes,
+      ] = await Promise.all([
+        orderService.getAllOrders(),
+        paymentService.getAllPayments(),
+        profileService.getAllCustomers(),
+        catalogService.getAllServices(),
+        catalogService.getAllMonthlyPackages(),
+        notificationService.getAllNotifications(100),
+        authService.getAdminAuditLogs(100),
+      ]);
 
-  useEffect(() => {
-    fetchOrders();
-    fetchPayments();
+      setOrders(ordersRes || []);
+      setPayments(paymentsRes.payments || []);
+      setCustomers(customersRes.customers || []);
+      setServices(servicesRes.services || []);
+      setPackages(packagesRes.packages || []);
+      setNotifications(notifsRes.notifications || []);
+      setAuditLogs(auditRes || []);
+    } catch (err: any) {
+      console.error('Error fetching admin dashboard data:', err);
+      setDataError(err.message || 'Unable to fetch records from database.');
+    } finally {
+      setIsLoadingData(false);
+      setIsRefreshing(false);
+    }
   }, []);
 
-  // Update booking order status
-  const handleStatusChange = async (trackingNumber: string, newStatus: OrderStatus) => {
+  useEffect(() => {
+    fetchAllData();
+  }, [fetchAllData]);
+
+  // =========================================================================
+  // Metric Calculations (Derived strictly from real Supabase records)
+  // =========================================================================
+  const totalBookingsCount = orders.length;
+
+  const pendingRequestsCount = orders.filter((o) =>
+    ['Request Received', 'Booking Request Received', 'pending_pickup'].includes(o.status)
+  ).length;
+
+  const confirmedBookingsCount = orders.filter((o) =>
+    ['Confirmed', 'Booking Confirmed'].includes(o.status)
+  ).length;
+
+  const completedDeliveriesCount = orders.filter((o) =>
+    ['Delivered', 'delivered'].includes(o.status)
+  ).length;
+
+  const totalCustomersCount = customers.length;
+
+  const pendingPaymentsCount = payments.filter((p) =>
+    ['Pending', 'pending'].includes(p.payment_status)
+  ).length;
+
+  const awaitingVerificationCount = payments.filter((p) =>
+    p.payment_status === 'Awaiting Verification'
+  ).length;
+
+  const paidPaymentsCount = payments.filter((p) =>
+    p.payment_status === 'Paid'
+  ).length;
+
+  // =========================================================================
+  // Order Status Updates
+  // =========================================================================
+  const handleStatusChange = async (
+    trackingNumber: string,
+    newStatus: OrderStatus,
+    cancellationReason?: string
+  ) => {
     setUpdatingId(trackingNumber);
     try {
-      await orderService.updateOrderStatus(trackingNumber, newStatus);
-      await fetchOrders();
+      await orderService.updateOrderStatus(trackingNumber, newStatus, cancellationReason);
+      // Refresh orders
+      const updatedOrders = await orderService.getAllOrders();
+      setOrders(updatedOrders);
+
+      // If details modal is open for this order, update viewingOrder state
+      if (viewingOrder && viewingOrder.trackingNumber === trackingNumber) {
+        const found = updatedOrders.find((o) => o.trackingNumber === trackingNumber);
+        if (found) setViewingOrder(found);
+      }
     } catch (err) {
       console.error('Failed to update order status:', err);
     } finally {
@@ -102,7 +218,9 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Open Payment Verification Modal
+  // =========================================================================
+  // Payment Verification Handlers
+  // =========================================================================
   const handleOpenVerifyModal = (payment: PaymentRecord) => {
     setSelectedPayment(payment);
     setVerifyStatus(payment.payment_status);
@@ -112,12 +230,10 @@ export const AdminDashboardPage: React.FC = () => {
     setVerifyFeedback(null);
   };
 
-  // Submit Payment Verification
   const handleConfirmVerification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPayment || !user) return;
 
-    // Security check: only admins can verify payments
     if (user.role && user.role !== 'admin') {
       setVerifyFeedback({
         success: false,
@@ -144,16 +260,16 @@ export const AdminDashboardPage: React.FC = () => {
       if (res.success && res.payment) {
         setVerifyFeedback({
           success: true,
-          message: `Payment status updated to ${verifyStatus} successfully!`,
+          message: `Payment status updated to "${verifyStatus}" successfully!`,
         });
 
-        // Update local list
         setPayments((prev) =>
           prev.map((p) => (p.id === selectedPayment.id ? (res.payment as PaymentRecord) : p))
         );
 
-        // Also refresh orders to reflect synced payment status
-        fetchOrders();
+        // Refresh orders to sync payment status
+        const updatedOrders = await orderService.getAllOrders();
+        setOrders(updatedOrders);
 
         setTimeout(() => {
           setSelectedPayment(null);
@@ -174,306 +290,470 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Order Metrics
-  const totalOrdersCount = orders.length;
-  const pendingPickupCount = orders.filter((o) => o.status === 'pending_pickup').length;
-  const inProgressCount = orders.filter((o) => ['picked_up', 'processing', 'ironing'].includes(o.status)).length;
-  const deliveredCount = orders.filter((o) => o.status === 'delivered').length;
-  const totalRevenue = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  // =========================================================================
+  // Filtering Logic
+  // =========================================================================
+  const filteredOrders = useMemo(() => {
+    return orders.filter((o) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch =
+        searchTerm === '' ||
+        o.trackingNumber.toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q) ||
+        o.area.toLowerCase().includes(q) ||
+        o.customerPhone.includes(searchTerm);
 
-  // Payment Metrics
-  const awaitingVerificationCount = payments.filter((p) => p.payment_status === 'Awaiting Verification').length;
-  const paidPaymentsCount = payments.filter((p) => p.payment_status === 'Paid').length;
-  const pendingPaymentsCount = payments.filter((p) => p.payment_status === 'Pending').length;
-  const verifiedPaymentsTotalPkr = payments
-    .filter((p) => p.payment_status === 'Paid')
-    .reduce((sum, p) => sum + (p.payment_amount || 0), 0);
+      let matchesStatus = true;
+      if (filterStatus !== 'all') {
+        matchesStatus = o.status === filterStatus || o.bookingStatus === filterStatus;
+      }
 
-  // Filtered Orders
-  const filteredOrders = orders.filter((o) => {
-    const matchesSearch =
-      o.trackingNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.area.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      o.customerPhone.includes(searchTerm);
+      return matchesSearch && matchesStatus;
+    });
+  }, [orders, searchTerm, filterStatus]);
 
-    const matchesStatus = filterStatus === 'all' || o.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredPayments = useMemo(() => {
+    return payments.filter((p) => {
+      const matchingOrder = orders.find((o) => o.id === p.booking_id);
+      const trackingStr = matchingOrder ? matchingOrder.trackingNumber.toLowerCase() : '';
+      const customerStr = matchingOrder ? matchingOrder.customerName.toLowerCase() : '';
+      const phoneStr = matchingOrder ? matchingOrder.customerPhone : '';
+      const tidStr = (p.transaction_reference || '').toLowerCase();
+      const q = paymentSearch.toLowerCase();
 
-  // Filtered Payments
-  const filteredPayments = payments.filter((p) => {
-    // Find matching booking for customer info lookup
-    const matchingOrder = orders.find((o) => o.id === p.booking_id);
-    const trackingStr = matchingOrder ? matchingOrder.trackingNumber.toLowerCase() : '';
-    const customerStr = matchingOrder ? matchingOrder.customerName.toLowerCase() : '';
-    const phoneStr = matchingOrder ? matchingOrder.customerPhone : '';
-    const tidStr = (p.transaction_reference || '').toLowerCase();
+      const matchesSearch =
+        paymentSearch === '' ||
+        trackingStr.includes(q) ||
+        customerStr.includes(q) ||
+        phoneStr.includes(paymentSearch) ||
+        tidStr.includes(q) ||
+        p.id.toLowerCase().includes(q);
 
-    const matchesSearch =
-      paymentSearch === '' ||
-      trackingStr.includes(paymentSearch.toLowerCase()) ||
-      customerStr.includes(paymentSearch.toLowerCase()) ||
-      phoneStr.includes(paymentSearch) ||
-      tidStr.includes(paymentSearch.toLowerCase()) ||
-      p.id.toLowerCase().includes(paymentSearch.toLowerCase());
+      const matchesStatus =
+        paymentStatusFilter === 'all' || p.payment_status === paymentStatusFilter;
+      const matchesMethod =
+        paymentMethodFilter === 'all' || p.payment_method === paymentMethodFilter;
 
-    const matchesStatus = paymentStatusFilter === 'all' || p.payment_status === paymentStatusFilter;
-    const matchesMethod = paymentMethodFilter === 'all' || p.payment_method === paymentMethodFilter;
+      return matchesSearch && matchesStatus && matchesMethod;
+    });
+  }, [payments, orders, paymentSearch, paymentStatusFilter, paymentMethodFilter]);
 
-    return matchesSearch && matchesStatus && matchesMethod;
-  });
+  // Loading Screen
+  if (isLoadingData) {
+    return (
+      <div className="py-24 flex flex-col items-center justify-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-navy-100 flex items-center justify-center text-navy-600 animate-pulse">
+          <RefreshCw className="w-6 h-6 animate-spin text-aqua-600" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-poppins font-bold text-base text-darkNavy">
+            Connecting to Kasur Operations Hub...
+          </h2>
+          <p className="text-xs text-navy-500 mt-1">
+            Loading real-time bookings, payment reconciliations, and customer records.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Top Header */}
+    <div className="space-y-8 text-darkNavy">
+      <SEO
+        title="Admin Control Center"
+        description="Centralized administrative operations console for managing bookings, customer profiles, payment verifications, and pricing for Pickup Wash Kasur."
+      />
+      {/* =========================================================================
+          TOP OPERATIONAL HEADER & QUICK REFRESH
+         ========================================================================= */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-ice-100 text-aqua-700 text-xs font-bold uppercase tracking-wider mb-2">
             <ShieldCheck className="w-3.5 h-3.5 text-aqua-600" />
-            <span>Kasur City Operations Hub</span>
+            <span>Kasur City Central Operational Console</span>
           </div>
           <h1 className="font-poppins font-bold text-2xl sm:text-3xl text-navy-900">
-            Operations & Payment Center
+            {activeTab === 'overview' && 'Operations Dashboard'}
+            {activeTab === 'bookings' && 'Booking Dispatch Pipeline'}
+            {activeTab === 'customers' && 'Customer Directory'}
+            {activeTab === 'services' && 'Services & Catalog Pricing'}
+            {activeTab === 'payments' && 'Payment Verification & Audit'}
+            {activeTab === 'notifications' && 'Customer Notifications Stream'}
+            {activeTab === 'analytics' && 'Business Analytics & Reports'}
+            {activeTab === 'settings' && 'Operational Settings & Security Audit'}
           </h1>
-          <p className="text-xs sm:text-sm text-navy-600">
-            Real-time Doorstep Pickups, Laundry Tracking & Payment Verification
+          <p className="text-xs sm:text-sm text-navy-600 mt-0.5">
+            Real-time management for doorstep laundry, steam pressing, and cash collections
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              fetchOrders();
-              fetchPayments();
-            }}
-            isLoading={isLoadingOrders || isLoadingPayments}
-            className="gap-2 self-start sm:self-auto"
-            leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
+            onClick={() => fetchAllData(true)}
+            disabled={isRefreshing}
+            className="gap-2 shrink-0 bg-white shadow-soft"
           >
-            Refresh Data
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-aqua-600' : 'text-navy-600'}`} />
+            <span>{isRefreshing ? 'Syncing...' : 'Sync Live Data'}</span>
           </Button>
+
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-emerald-800 font-semibold px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Kasur Hub Live</span>
+          </span>
         </div>
       </div>
 
-      {/* Main Navigation Tabs */}
-      <div className="flex items-center gap-3 border-b border-ice-200 pb-2">
-        <button
-          onClick={() => setActiveTab('orders')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
-            activeTab === 'orders'
-              ? 'bg-navy-500 text-white shadow-soft'
-              : 'text-navy-600 hover:bg-ice-100'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Orders & Laundry Pipeline</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-navy-700 text-aqua-300">
-            {orders.length}
-          </span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('payments')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold transition-all relative ${
-            activeTab === 'payments'
-              ? 'bg-navy-500 text-white shadow-soft'
-              : 'text-navy-600 hover:bg-ice-100'
-          }`}
-        >
-          <CreditCard className="w-4 h-4" />
-          <span>Payment Verification & Audit</span>
-          {awaitingVerificationCount > 0 ? (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-darkNavy animate-pulse">
-              {awaitingVerificationCount} Review
-            </span>
-          ) : (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-ice-200 text-navy-700">
-              {payments.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* =========================================================================
-          TAB 1: ORDERS & OPERATIONS
-         ========================================================================= */}
-      {activeTab === 'orders' && (
-        <div className="space-y-6 animate-in fade-in">
-          {/* Order Metrics Row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="p-5 border-ice-200">
-              <span className="text-xs font-semibold text-navy-400 uppercase">Total Orders</span>
-              <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-500 mt-1">
-                {totalOrdersCount}
-              </div>
-              <span className="text-[11px] text-navy-500 font-medium">All registered bookings</span>
-            </Card>
-
-            <Card className="p-5 border-amber-200 bg-amber-50/40">
-              <span className="text-xs font-semibold text-amber-700 uppercase">Pending Pickup</span>
-              <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-amber-700 mt-1">
-                {pendingPickupCount}
-              </div>
-              <span className="text-[11px] text-amber-600">Waiting for rider collection</span>
-            </Card>
-
-            <Card className="p-5 border-aqua-300 bg-aqua-50/40">
-              <span className="text-xs font-semibold text-navy-700 uppercase">Active In Laundry</span>
-              <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-700 mt-1">
-                {inProgressCount}
-              </div>
-              <span className="text-[11px] text-navy-600">In washing or steam ironing</span>
-            </Card>
-
-            <Card className="p-5 border-emerald-200 bg-emerald-50/40">
-              <span className="text-xs font-semibold text-emerald-800 uppercase">Delivered Orders</span>
-              <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-emerald-800 mt-1">
-                {deliveredCount}
-              </div>
-              <span className="text-[11px] text-emerald-700">Doorstep delivered in Kasur</span>
-            </Card>
+      {/* Error Alert if any */}
+      {dataError && (
+        <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <strong className="font-bold block">Database Connectivity Notice</strong>
+            <p>{dataError}</p>
           </div>
-
-          {/* Search & Filter Controls */}
-          <Card className="p-4 border-ice-200 flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-navy-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                placeholder="Search by tracking code, customer name, area, phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-xl border border-ice-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-navy-400 bg-ice-50/40"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-navy-400 shrink-0" />
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-ice-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-              >
-                <option value="all">All Statuses</option>
-                {Object.keys(ORDER_STATUS_LABELS).map((k) => (
-                  <option key={k} value={k}>
-                    {ORDER_STATUS_LABELS[k].label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </Card>
-
-          {/* Orders Table */}
-          <Card className="p-0 border-ice-200 overflow-hidden shadow-soft">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-navy-500 text-white font-poppins text-xs uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3.5 px-4">Tracking Code</th>
-                    <th className="py-3.5 px-4">Customer & Location</th>
-                    <th className="py-3.5 px-4">Pickup Schedule</th>
-                    <th className="py-3.5 px-4">Booking Status</th>
-                    <th className="py-3.5 px-4">Payment Method</th>
-                    <th className="py-3.5 px-4">Update Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-ice-200 text-navy-800">
-                  {filteredOrders.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-navy-400">
-                        No orders matching your criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredOrders.map((ord) => (
-                      <tr key={ord.id} className="hover:bg-ice-50/60 transition-colors">
-                        {/* Tracking Code */}
-                        <td className="py-4 px-4 font-mono font-bold text-navy-700 whitespace-nowrap">
-                          {ord.trackingNumber}
-                        </td>
-
-                        {/* Customer & Location */}
-                        <td className="py-4 px-4">
-                          <div className="font-semibold text-navy-900">{ord.customerName}</div>
-                          <div className="text-xs text-navy-500 flex items-center gap-1 mt-0.5">
-                            <Phone className="w-3 h-3 text-aqua-600" />
-                            {ord.customerPhone}
-                          </div>
-                          <div className="text-xs text-navy-600 flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3 text-aqua-600" />
-                            <span className="truncate max-w-[200px]">{ord.area} - {ord.pickupAddress}</span>
-                          </div>
-                        </td>
-
-                        {/* Schedule */}
-                        <td className="py-4 px-4 whitespace-nowrap text-xs">
-                          <div className="font-medium text-navy-800 flex items-center gap-1">
-                            <Calendar className="w-3.5 h-3.5 text-navy-400" />
-                            {ord.pickupDate}
-                          </div>
-                          <div className="text-navy-500 text-[11px] mt-0.5">
-                            {ord.pickupTimeSlot}
-                          </div>
-                        </td>
-
-                        {/* Current Status Badge */}
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                            ORDER_STATUS_LABELS[ord.status]?.color || 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {ORDER_STATUS_LABELS[ord.status]?.label || ord.status}
-                          </span>
-                        </td>
-
-                        {/* Payment Method & Status */}
-                        <td className="py-4 px-4 whitespace-nowrap text-xs">
-                          <div className="font-semibold text-navy-800">{ord.paymentMethod}</div>
-                          <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-bold uppercase mt-1 ${
-                            (ord.paymentStatus || '').toLowerCase() === 'paid'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : (ord.paymentStatus || '').toLowerCase() === 'awaiting verification'
-                              ? 'bg-sky-100 text-sky-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}>
-                            {ord.paymentStatus || 'Pending'}
-                          </span>
-                        </td>
-
-                        {/* Update Status Dropdown */}
-                        <td className="py-4 px-4 whitespace-nowrap">
-                          <select
-                            disabled={updatingId === ord.trackingNumber}
-                            value={ord.status}
-                            onChange={(e) => handleStatusChange(ord.trackingNumber, e.target.value as OrderStatus)}
-                            className="px-2.5 py-1.5 rounded-lg border border-ice-300 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-navy-400"
-                          >
-                            {Object.keys(ORDER_STATUS_LABELS).map((st) => (
-                              <option key={st} value={st}>
-                                {ORDER_STATUS_LABELS[st].label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
         </div>
       )}
 
       {/* =========================================================================
-          TAB 2: PAYMENT VERIFICATION & MANAGEMENT
+          TAB 1: OVERVIEW (Summary Cards, Quick Actions, Analytics & Recent Bookings)
+         ========================================================================= */}
+      {activeTab === 'overview' && (
+        <div className="space-y-8 animate-in fade-in">
+          {/* 1. Summary Cards (Real Supabase records) */}
+          <section aria-labelledby="summary-metrics-heading">
+            <h2 id="summary-metrics-heading" className="sr-only">Operations Summary Metrics</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+              {/* Total Bookings */}
+              <Card className="p-4 sm:p-5 border-ice-200 shadow-card flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-navy-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Total Bookings</span>
+                  <ShoppingBag className="w-3.5 h-3.5 text-navy-400" />
+                </span>
+                <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-900 mt-2">
+                  {totalBookingsCount}
+                </div>
+                <span className="text-[10px] text-navy-500 mt-1 truncate">Platform submissions</span>
+              </Card>
+
+              {/* Pending Booking Requests */}
+              <Card className="p-4 sm:p-5 border-amber-300 bg-amber-50/40 shadow-card flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Pending Requests</span>
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                </span>
+                <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-amber-900 mt-2">
+                  {pendingRequestsCount}
+                </div>
+                <span className="text-[10px] text-amber-700 mt-1 truncate">Awaiting review</span>
+              </Card>
+
+              {/* Confirmed Bookings */}
+              <Card className="p-4 sm:p-5 border-blue-200 bg-blue-50/30 shadow-card flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Confirmed</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                </span>
+                <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-blue-900 mt-2">
+                  {confirmedBookingsCount}
+                </div>
+                <span className="text-[10px] text-blue-700 mt-1 truncate">Assigned to rider</span>
+              </Card>
+
+              {/* Completed Deliveries */}
+              <Card className="p-4 sm:p-5 border-emerald-200 bg-emerald-50/30 shadow-card flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
+                  <span>Delivered</span>
+                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                </span>
+                <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-emerald-900 mt-2">
+                  {completedDeliveriesCount}
+                </div>
+                <span className="text-[10px] text-emerald-700 mt-1 truncate">Delivered to door</span>
+              </Card>
+
+              {/* Total Customers */}
+              <Card className="p-4 sm:p-5 border-ice-200 shadow-card flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-navy-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Customers</span>
+                  <Users className="w-3.5 h-3.5 text-navy-400" />
+                </span>
+                <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-900 mt-2">
+                  {totalCustomersCount}
+                </div>
+                <span className="text-[10px] text-navy-500 mt-1 truncate">Registered clients</span>
+              </Card>
+
+              {/* Pending Payments */}
+              <Card className="p-4 sm:p-5 border-ice-200 shadow-card flex flex-col justify-between">
+                <span className="text-[11px] font-bold text-navy-400 uppercase tracking-wider flex items-center justify-between">
+                  <span>Pending Pay</span>
+                  <CreditCard className="w-3.5 h-3.5 text-navy-400" />
+                </span>
+                <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-900 mt-2">
+                  {pendingPaymentsCount}
+                </div>
+                <span className="text-[10px] text-navy-500 mt-1 truncate">Cash / TID unpaid</span>
+              </Card>
+            </div>
+          </section>
+
+          {/* 2. Quick Actions Shortcuts */}
+          <section aria-labelledby="quick-actions-heading" className="space-y-3">
+            <h2 id="quick-actions-heading" className="text-xs font-bold text-navy-800 uppercase tracking-wider">
+              Operational Quick Actions
+            </h2>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  handleTabChange('bookings');
+                  setFilterStatus('Request Received');
+                }}
+                className="p-4 rounded-2xl bg-white border border-ice-200 hover:border-aqua-400 hover:shadow-soft transition-all text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-navy-400 group-hover:text-aqua-600 transition-colors" />
+                </div>
+                <div>
+                  <strong className="text-xs font-bold text-darkNavy block">View New Bookings</strong>
+                  <span className="text-[10px] text-navy-500">{pendingRequestsCount} awaiting review</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTabChange('bookings')}
+                className="p-4 rounded-2xl bg-white border border-ice-200 hover:border-aqua-400 hover:shadow-soft transition-all text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-navy-100 text-navy-800 flex items-center justify-center">
+                    <ShoppingBag className="w-4 h-4 text-navy-600" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-navy-400 group-hover:text-aqua-600 transition-colors" />
+                </div>
+                <div>
+                  <strong className="text-xs font-bold text-darkNavy block">Manage Bookings</strong>
+                  <span className="text-[10px] text-navy-500">Pipeline & rider dispatch</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleTabChange('payments');
+                  setPaymentStatusFilter('Awaiting Verification');
+                }}
+                className="p-4 rounded-2xl bg-white border border-ice-200 hover:border-aqua-400 hover:shadow-soft transition-all text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center relative">
+                    <CreditCard className="w-4 h-4 text-emerald-700" />
+                    {awaitingVerificationCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                    )}
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-navy-400 group-hover:text-aqua-600 transition-colors" />
+                </div>
+                <div>
+                  <strong className="text-xs font-bold text-darkNavy block">Verify Payments</strong>
+                  <span className="text-[10px] text-navy-500">{awaitingVerificationCount} requiring TID check</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTabChange('services')}
+                className="p-4 rounded-2xl bg-white border border-ice-200 hover:border-aqua-400 hover:shadow-soft transition-all text-left flex flex-col justify-between group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-800 flex items-center justify-center">
+                    <Sliders className="w-4 h-4 text-purple-700" />
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-navy-400 group-hover:text-aqua-600 transition-colors" />
+                </div>
+                <div>
+                  <strong className="text-xs font-bold text-darkNavy block">Manage Services</strong>
+                  <span className="text-[10px] text-navy-500">Pricing & catalog toggle</span>
+                </div>
+              </button>
+            </div>
+          </section>
+
+          {/* 3. Business Analytics Visualizations */}
+          <section aria-labelledby="analytics-visualizations-heading">
+            <h2 id="analytics-visualizations-heading" className="sr-only">Business Analytics</h2>
+            <AdminAnalyticsCharts orders={orders} payments={payments} />
+          </section>
+
+          {/* 4. Recent Bookings Table (Last 6 orders) */}
+          <section aria-labelledby="recent-bookings-heading" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 id="recent-bookings-heading" className="font-poppins font-bold text-base sm:text-lg text-darkNavy">
+                  Recent Booking Submissions
+                </h2>
+                <p className="text-xs text-navy-500">
+                  Latest laundry requests submitted for doorstep collection in Kasur
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleTabChange('bookings')}
+                className="text-xs font-bold text-aqua-700 hover:text-aqua-800 inline-flex items-center gap-1 transition-colors"
+              >
+                <span>View Full Pipeline ({orders.length})</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <Card className="border-ice-200 overflow-hidden shadow-card">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-navy-800 text-white border-b border-navy-700 uppercase tracking-wider text-[11px]">
+                      <th className="py-3.5 px-4 font-bold">Booking Reference</th>
+                      <th className="py-3.5 px-4 font-bold">Customer Name</th>
+                      <th className="py-3.5 px-4 font-bold">Service Type</th>
+                      <th className="py-3.5 px-4 font-bold">Pickup Date</th>
+                      <th className="py-3.5 px-4 font-bold">Booking Status</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-ice-100 bg-white">
+                    {orders.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-navy-400">
+                          <ShoppingBag className="w-8 h-8 text-navy-300 mx-auto mb-2" />
+                          <p className="font-semibold text-darkNavy text-sm">No bookings in database yet</p>
+                          <p className="text-xs text-navy-400 mt-1">
+                            New customer orders placed from the website will display here in real time.
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      orders.slice(0, 6).map((order) => {
+                        return (
+                          <tr key={order.id} className="hover:bg-ice-50/70 transition-colors">
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <span className="font-mono font-bold text-xs text-navy-900 bg-ice-100 px-2.5 py-1 rounded-md border border-ice-200">
+                                {order.trackingNumber}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <div>
+                                <strong className="text-darkNavy font-semibold block text-xs sm:text-sm">
+                                  {order.customerName || 'Customer'}
+                                </strong>
+                                <span className="text-[10px] text-navy-500">
+                                  {order.customerPhone || order.area || 'Kasur City'}
+                                </span>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-xs font-medium text-navy-800 whitespace-nowrap">
+                              {order.items[0]?.serviceTitle || 'Standard Laundry'}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-xs text-navy-600 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-navy-400" />
+                                <span>{order.pickupDate}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 whitespace-nowrap">
+                              <select
+                                value={order.status}
+                                onChange={(e) => handleStatusChange(order.trackingNumber, e.target.value as OrderStatus)}
+                                disabled={updatingId === order.trackingNumber}
+                                className="px-2.5 py-1 rounded-lg border border-ice-300 text-xs font-semibold bg-white text-navy-800 focus:outline-none focus:ring-2 focus:ring-aqua-500 cursor-pointer"
+                              >
+                                {Object.keys(ORDER_STATUS_LABELS).map((st) => (
+                                  <option key={st} value={st}>
+                                    {ORDER_STATUS_LABELS[st].label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                              <Button
+                                size="xs"
+                                variant="secondary"
+                                onClick={() => setViewingOrder(order)}
+                                className="gap-1.5 text-xs text-navy-700 font-semibold"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-aqua-600" />
+                                <span>View Details</span>
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </section>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 2: BOOKINGS (Full Laundry Pipeline & Dispatch Management)
+         ========================================================================= */}
+      {activeTab === 'bookings' && (
+        <AdminBookingsManager
+          orders={orders}
+          payments={payments}
+          onStatusChange={handleStatusChange}
+          onOpenPaymentVerification={handleOpenVerifyModal}
+          initialFilterStatus={filterStatus}
+          initialSearch={searchTerm}
+        />
+      )}
+
+      {/* =========================================================================
+          TAB 3: CUSTOMERS DIRECTORY
+         ========================================================================= */}
+      {activeTab === 'customers' && (
+        <AdminCustomerDirectory
+          customers={customers}
+          orders={orders}
+          onSelectCustomerBookings={(phone) => {
+            handleTabChange('bookings');
+            setSearchTerm(phone);
+          }}
+        />
+      )}
+
+      {/* =========================================================================
+          TAB 4: SERVICES & PRICING
+         ========================================================================= */}
+      {activeTab === 'services' && (
+        <AdminServicesManager
+          services={services}
+          packages={packages}
+          onRefresh={() => fetchAllData(true)}
+        />
+      )}
+
+      {/* =========================================================================
+          TAB 5: PAYMENTS (Verification & Audit)
          ========================================================================= */}
       {activeTab === 'payments' && (
         <div className="space-y-6 animate-in fade-in">
-          {/* Payment Metrics Row */}
+          {/* Payment Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="p-5 border-amber-300 bg-amber-50/50">
               <span className="text-xs font-semibold text-amber-800 uppercase flex items-center justify-between">
@@ -494,185 +774,140 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-emerald-800 mt-1">
                 {paidPaymentsCount}
               </div>
-              <span className="text-[11px] text-emerald-700">Approved cash & digital</span>
-            </Card>
-
-            <Card className="p-5 border-sky-200 bg-sky-50/40">
-              <span className="text-xs font-semibold text-navy-600 uppercase flex items-center justify-between">
-                <span>Pending / COD</span>
-                <CreditCard className="w-3.5 h-3.5 text-navy-500" />
-              </span>
-              <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-700 mt-1">
-                {pendingPaymentsCount}
-              </div>
-              <span className="text-[11px] text-navy-600">Pending delivery or transfer</span>
+              <span className="text-[11px] text-emerald-700">Reconciled to cash/account</span>
             </Card>
 
             <Card className="p-5 border-ice-200">
-              <span className="text-xs font-semibold text-navy-400 uppercase flex items-center justify-between">
-                <span>Total Collected</span>
-                <DollarSign className="w-3.5 h-3.5 text-aqua-600" />
-              </span>
+              <span className="text-xs font-semibold text-navy-400 uppercase">Pending Collection</span>
               <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-500 mt-1">
-                PKR {verifiedPaymentsTotalPkr.toLocaleString()}
+                {pendingPaymentsCount}
               </div>
-              <span className="text-[11px] text-navy-500 font-medium">From verified transactions</span>
+              <span className="text-[11px] text-navy-400">Cash on delivery pending</span>
+            </Card>
+
+            <Card className="p-5 border-ice-200">
+              <span className="text-xs font-semibold text-navy-400 uppercase">Total Verified PKR</span>
+              <div className="font-poppins font-extrabold text-2xl sm:text-3xl text-navy-900 mt-1">
+                PKR {payments.filter((p) => p.payment_status === 'Paid').reduce((s, p) => s + (p.payment_amount || 0), 0).toLocaleString()}
+              </div>
+              <span className="text-[11px] text-navy-400">Settled revenue</span>
             </Card>
           </div>
 
           {/* Search & Filters */}
-          <Card className="p-4 border-ice-200 flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-navy-400 absolute left-3.5 top-3" />
-              <input
-                type="text"
-                placeholder="Search by Booking Ref, TID, customer name, phone..."
-                value={paymentSearch}
-                onChange={(e) => setPaymentSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-xl border border-ice-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-navy-400 bg-ice-50/40"
-              />
-            </div>
+          <Card className="p-4 sm:p-5 border-ice-200">
+            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-navy-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search by TID, customer, or booking ref..."
+                  value={paymentSearch}
+                  onChange={(e) => setPaymentSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 rounded-xl border border-navy-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-aqua-500 bg-white"
+                />
+              </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Payment Method Filter */}
-              <select
-                value={paymentMethodFilter}
-                onChange={(e) => setPaymentMethodFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-ice-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-              >
-                <option value="all">All Methods</option>
-                <option value="Cash on Delivery">Cash on Delivery</option>
-                <option value="JazzCash">JazzCash</option>
-                <option value="Easypaisa">Easypaisa</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-              </select>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={paymentStatusFilter}
+                  onChange={(e) => setPaymentStatusFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-navy-200 text-xs font-semibold bg-white text-navy-700"
+                >
+                  <option value="all">All Payment Statuses</option>
+                  <option value="Awaiting Verification">Awaiting Verification</option>
+                  <option value="Paid">Paid</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Failed">Failed</option>
+                  <option value="Refunded">Refunded</option>
+                </select>
 
-              {/* Payment Status Filter */}
-              <select
-                value={paymentStatusFilter}
-                onChange={(e) => setPaymentStatusFilter(e.target.value)}
-                className="px-3 py-2 rounded-xl border border-ice-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-              >
-                <option value="all">All Payment Statuses</option>
-                <option value="Awaiting Verification">Awaiting Verification</option>
-                <option value="Paid">Paid</option>
-                <option value="Pending">Pending</option>
-                <option value="Failed">Failed</option>
-                <option value="Refunded">Refunded</option>
-              </select>
+                <select
+                  value={paymentMethodFilter}
+                  onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl border border-navy-200 text-xs font-semibold bg-white text-navy-700"
+                >
+                  <option value="all">All Payment Methods</option>
+                  <option value="Cash on Delivery">Cash on Delivery</option>
+                  <option value="JazzCash">JazzCash</option>
+                  <option value="Easypaisa">Easypaisa</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                </select>
+              </div>
             </div>
           </Card>
 
           {/* Payments Table */}
-          <Card className="p-0 border-ice-200 overflow-hidden shadow-soft">
+          <Card className="border-ice-200 overflow-hidden shadow-card">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-navy-500 text-white font-poppins text-xs uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3.5 px-4">Booking Ref</th>
-                    <th className="py-3.5 px-4">Customer Details</th>
-                    <th className="py-3.5 px-4">Payment Method</th>
-                    <th className="py-3.5 px-4">Amount (PKR)</th>
-                    <th className="py-3.5 px-4">Transaction TID</th>
-                    <th className="py-3.5 px-4">Payment Status</th>
-                    <th className="py-3.5 px-4 text-right">Verification Action</th>
+              <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                <thead>
+                  <tr className="bg-navy-800 text-white border-b border-navy-700 uppercase tracking-wider text-[11px]">
+                    <th className="py-3.5 px-4 font-bold">Booking Ref</th>
+                    <th className="py-3.5 px-4 font-bold">Method</th>
+                    <th className="py-3.5 px-4 font-bold">Transaction Reference (TID)</th>
+                    <th className="py-3.5 px-4 font-bold">Amount (PKR)</th>
+                    <th className="py-3.5 px-4 font-bold">Status</th>
+                    <th className="py-3.5 px-4 font-bold text-right">Verification</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-ice-200 text-navy-800">
+
+                <tbody className="divide-y divide-ice-100 bg-white">
                   {filteredPayments.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-xs text-navy-400">
-                        No payment records matching your filter.
+                      <td colSpan={6} className="py-12 text-center text-navy-400">
+                        <CreditCard className="w-8 h-8 text-navy-300 mx-auto mb-2" />
+                        <p className="font-semibold text-darkNavy text-sm">No payment records found</p>
                       </td>
                     </tr>
                   ) : (
                     filteredPayments.map((p) => {
-                      const matchedOrder = orders.find((o) => o.id === p.booking_id);
+                      const matchingOrder = orders.find((o) => o.id === p.booking_id);
                       const isAwaiting = p.payment_status === 'Awaiting Verification';
 
                       return (
-                        <tr
-                          key={p.id}
-                          className={`transition-colors ${
-                            isAwaiting ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-ice-50/60'
-                          }`}
-                        >
-                          {/* Booking Ref */}
-                          <td className="py-4 px-4 font-mono font-bold text-navy-700 whitespace-nowrap">
-                            {matchedOrder ? matchedOrder.trackingNumber : 'PW-KSR-BK'}
+                        <tr key={p.id} className="hover:bg-ice-50/70 transition-colors">
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-mono font-bold text-xs text-navy-900 bg-ice-100 px-2.5 py-1 rounded-md border border-ice-200">
+                              {matchingOrder ? matchingOrder.trackingNumber : p.booking_id.slice(0, 8)}
+                            </span>
                           </td>
 
-                          {/* Customer */}
-                          <td className="py-4 px-4">
-                            <div className="font-semibold text-navy-900">
-                              {matchedOrder ? matchedOrder.customerName : 'Registered Customer'}
-                            </div>
-                            <div className="text-xs text-navy-500 flex items-center gap-1 mt-0.5">
-                              <Phone className="w-3 h-3 text-aqua-600" />
-                              {matchedOrder ? matchedOrder.customerPhone : 'N/A'}
-                            </div>
+                          <td className="py-3.5 px-4 text-xs font-semibold text-navy-800 whitespace-nowrap">
+                            {p.payment_method}
                           </td>
 
-                          {/* Payment Method */}
-                          <td className="py-4 px-4 whitespace-nowrap">
-                            <span className="font-semibold text-navy-800">{p.payment_method}</span>
-                          </td>
-
-                          {/* Amount */}
-                          <td className="py-4 px-4 whitespace-nowrap">
-                            {p.payment_amount != null ? (
-                              <span className="font-bold text-navy-700">
-                                PKR {p.payment_amount.toLocaleString()}
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-darkNavy/50 italic">
-                                Pending Weighing
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Transaction Reference (TID) */}
-                          <td className="py-4 px-4 font-mono text-xs whitespace-nowrap">
+                          <td className="py-3.5 px-4 font-mono text-xs text-navy-800 whitespace-nowrap">
                             {p.transaction_reference ? (
-                              <span className="bg-ice-100 text-navy-700 px-2 py-0.5 rounded-lg border border-ice-300 font-bold">
+                              <span className="bg-amber-50 text-amber-900 px-2 py-0.5 rounded font-bold border border-amber-200">
                                 {p.transaction_reference}
                               </span>
                             ) : (
-                              <span className="text-darkNavy/40 text-[11px]">—</span>
+                              <span className="text-navy-400">Not provided</span>
                             )}
                           </td>
 
-                          {/* Payment Status Badge */}
-                          <td className="py-4 px-4 whitespace-nowrap">
-                            {p.payment_status === 'Paid' && (
-                              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                Paid & Verified
-                              </span>
-                            )}
-                            {p.payment_status === 'Awaiting Verification' && (
-                              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-300 animate-pulse">
-                                Awaiting Verification
-                              </span>
-                            )}
-                            {p.payment_status === 'Pending' && (
-                              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                                Pending
-                              </span>
-                            )}
-                            {p.payment_status === 'Failed' && (
-                              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300">
-                                Failed
-                              </span>
-                            )}
-                            {p.payment_status === 'Refunded' && (
-                              <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
-                                Refunded
-                              </span>
-                            )}
+                          <td className="py-3.5 px-4 font-mono text-xs font-bold text-navy-900 whitespace-nowrap">
+                            {p.payment_amount != null
+                              ? `PKR ${p.payment_amount.toLocaleString()}`
+                              : 'Pending check'}
                           </td>
 
-                          {/* Action Button */}
-                          <td className="py-4 px-4 text-right whitespace-nowrap">
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span
+                              className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                                p.payment_status === 'Paid'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : isAwaiting
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300 animate-pulse'
+                                  : 'bg-ice-100 text-navy-700 border-ice-200'
+                              }`}
+                            >
+                              {p.payment_status}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
                             <Button
                               size="xs"
                               variant={isAwaiting ? 'accent' : 'secondary'}
@@ -697,6 +932,190 @@ export const AdminDashboardPage: React.FC = () => {
       )}
 
       {/* =========================================================================
+          TAB 6: NOTIFICATIONS (Customer Alerts Stream)
+         ========================================================================= */}
+      {activeTab === 'notifications' && (
+        <AdminNotificationsViewer
+          notifications={notifications}
+          onRefresh={() => fetchAllData(true)}
+        />
+      )}
+
+      {/* =========================================================================
+          TAB 7: REPORTS & ANALYTICS (Full-Width Deep Analytics)
+         ========================================================================= */}
+      {activeTab === 'analytics' && (
+        <AdminReportsDashboard
+          orders={orders}
+          payments={payments}
+          customers={customers}
+          packages={packages}
+        />
+      )}
+
+      {/* =========================================================================
+          TAB 8: SETTINGS & SECURITY AUDIT TRAIL
+         ========================================================================= */}
+      {activeTab === 'settings' && (
+        <div className="space-y-6 animate-in fade-in">
+          {/* Operations Hub Specifications */}
+          <Card className="p-5 sm:p-6 border-ice-200 shadow-card space-y-4">
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-aqua-600" />
+              <h2 className="font-poppins font-bold text-lg text-darkNavy">
+                Kasur Hub Operations Profile
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1">
+              <div className="p-3.5 rounded-2xl bg-ice-50/70 border border-ice-200 space-y-1">
+                <span className="text-navy-500 uppercase font-bold text-[10px] block">Operational Center</span>
+                <strong className="text-darkNavy font-semibold block text-sm">Central Kasur Hub</strong>
+                <span className="text-[11px] text-navy-500">Kutchery & Chunian Roads dispatch</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-ice-50/70 border border-ice-200 space-y-1">
+                <span className="text-navy-500 uppercase font-bold text-[10px] block">Security Architecture</span>
+                <strong className="text-emerald-700 font-semibold block text-sm flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>RLS & Triggers Enforced</span>
+                </strong>
+                <span className="text-[11px] text-navy-500">Role escalation blocked in PostgreSQL</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-ice-50/70 border border-ice-200 space-y-1">
+                <span className="text-navy-500 uppercase font-bold text-[10px] block">Active Administrator</span>
+                <strong className="text-darkNavy font-semibold block text-sm truncate">
+                  {user?.email || 'admin@pickupwash.pk'}
+                </strong>
+                <span className="text-[11px] text-aqua-600 font-semibold">Verified Operations Staff</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Security Audit Trail */}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-poppins font-bold text-base text-darkNavy flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-aqua-600" />
+                  <span>Administrative Security Audit Log</span>
+                </h3>
+                <p className="text-xs text-navy-500">
+                  Tamper-resistant ledger recording staff logins, order modifications, and payment reviews
+                </p>
+              </div>
+
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-navy-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Filter audit actions..."
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-navy-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                />
+              </div>
+            </div>
+
+            <Card className="border-ice-200 overflow-hidden shadow-card">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-navy-800 text-white border-b border-navy-700 uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-4 font-bold">Timestamp</th>
+                      <th className="py-3 px-4 font-bold">Action</th>
+                      <th className="py-3 px-4 font-bold">Staff Operator</th>
+                      <th className="py-3 px-4 font-bold">Entity Type</th>
+                      <th className="py-3 px-4 font-bold">Reference ID</th>
+                      <th className="py-3 px-4 font-bold">Details</th>
+                      <th className="py-3 px-4 font-bold text-right">Integrity</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-ice-100 bg-white">
+                    {auditLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-10 text-center text-navy-400">
+                          <ShieldCheck className="w-6 h-6 text-navy-300 mx-auto mb-2" />
+                          <p className="font-semibold text-darkNavy text-xs">No audit logs recorded yet</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      auditLogs
+                        .filter((log) => {
+                          if (!auditSearch.trim()) return true;
+                          const q = auditSearch.toLowerCase();
+                          return (
+                            log.action.toLowerCase().includes(q) ||
+                            (log.admin_email && log.admin_email.toLowerCase().includes(q)) ||
+                            (log.entity_id && log.entity_id.toLowerCase().includes(q))
+                          );
+                        })
+                        .map((log) => (
+                          <tr key={log.id} className="hover:bg-ice-50/70 transition-colors">
+                            <td className="py-2.5 px-4 font-mono text-[11px] text-navy-500 whitespace-nowrap">
+                              {new Date(log.created_at).toLocaleString('en-PK', {
+                                dateStyle: 'short',
+                                timeStyle: 'medium',
+                              })}
+                            </td>
+
+                            <td className="py-2.5 px-4 whitespace-nowrap">
+                              <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold bg-ice-100 text-navy-800 border border-ice-200">
+                                {log.action}
+                              </span>
+                            </td>
+
+                            <td className="py-2.5 px-4 text-xs font-medium text-darkNavy truncate max-w-[140px]">
+                              {log.admin_email || log.admin_id || 'System'}
+                            </td>
+
+                            <td className="py-2.5 px-4 text-xs text-navy-600 uppercase font-semibold">
+                              {log.entity_type}
+                            </td>
+
+                            <td className="py-2.5 px-4 font-mono text-xs text-navy-700 truncate max-w-[120px]">
+                              {log.entity_id || '—'}
+                            </td>
+
+                            <td className="py-2.5 px-4 text-xs text-navy-600 truncate max-w-[180px]">
+                              {typeof log.details === 'object' && log.details !== null
+                                ? JSON.stringify(log.details)
+                                : String(log.details || '—')}
+                            </td>
+
+                            <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                              <span className="text-[10px] font-bold text-emerald-700 inline-flex items-center gap-1">
+                                <ShieldCheck className="w-3 h-3" />
+                                <span>Verified</span>
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          BOOKING DETAILS MODAL (Action from View Details on rows)
+         ========================================================================= */}
+      {viewingOrder && (
+        <AdminBookingDetailsModal
+          order={viewingOrder}
+          payment={payments.find((p) => p.booking_id === viewingOrder.id)}
+          onClose={() => setViewingOrder(null)}
+          onStatusChange={handleStatusChange}
+          onOpenPaymentVerification={handleOpenVerifyModal}
+        />
+      )}
+
+      {/* =========================================================================
           ADMIN PAYMENT VERIFICATION MODAL
          ========================================================================= */}
       {selectedPayment && (
@@ -708,137 +1127,116 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="text-[10px] font-bold text-aqua-700 uppercase tracking-wider block">
                   Payment Verification Staff Portal
                 </span>
-                <h3 className="font-poppins font-extrabold text-xl text-navy-800">
-                  Verify Laundry Payment
-                </h3>
+                <h2 className="font-poppins font-bold text-lg text-darkNavy">
+                  Verify Transaction Details
+                </h2>
               </div>
               <button
+                type="button"
                 onClick={() => setSelectedPayment(null)}
-                className="p-1.5 rounded-full text-darkNavy/50 hover:bg-ice-100 transition-colors"
+                className="p-2 rounded-xl text-navy-400 hover:text-navy-600 hover:bg-ice-100 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Target Booking Info Card */}
-            {(() => {
-              const matchedOrder = orders.find((o) => o.id === selectedPayment.booking_id);
-              return (
-                <div className="p-4 rounded-2xl bg-ice-50/80 border border-ice-200 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-navy-700">
-                      {matchedOrder ? matchedOrder.trackingNumber : 'Booking Record'}
-                    </span>
-                    <span className="font-semibold text-aqua-700">
-                      Method: {selectedPayment.payment_method}
-                    </span>
-                  </div>
-                  {matchedOrder && (
-                    <div className="space-y-0.5 text-darkNavy/70">
-                      <div>Customer: <strong>{matchedOrder.customerName}</strong> ({matchedOrder.customerPhone})</div>
-                      <div>Area: {matchedOrder.area} • Service: {matchedOrder.items?.[0]?.serviceTitle || 'Wash & Iron'}</div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+            {/* Target Payment Info */}
+            <div className="bg-ice-50/70 rounded-2xl p-4 border border-ice-200 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-navy-500">Method:</span>
+                <strong className="text-darkNavy font-semibold">{selectedPayment.payment_method}</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-navy-500">Submitted TID:</span>
+                <strong className="font-mono text-darkNavy bg-white px-2 py-0.5 rounded border border-ice-200">
+                  {selectedPayment.transaction_reference || 'None'}
+                </strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-navy-500">Current Status:</span>
+                <span className="font-bold text-navy-800">{selectedPayment.payment_status}</span>
+              </div>
+            </div>
 
             {/* Verification Form */}
             <form onSubmit={handleConfirmVerification} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-navy-800 uppercase mb-1">
+                  Update Payment Status
+                </label>
+                <select
+                  value={verifyStatus}
+                  onChange={(e) => setVerifyStatus(e.target.value as PaymentStatus)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-navy-200 font-semibold bg-white text-navy-800 focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                >
+                  <option value="Paid">Paid (Verified Received)</option>
+                  <option value="Awaiting Verification">Awaiting Verification</option>
+                  <option value="Pending">Pending (Not Received)</option>
+                  <option value="Failed">Failed (Invalid Transaction)</option>
+                  <option value="Refunded">Refunded</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-navy-800 uppercase mb-1">
+                  Confirmed Amount (PKR)
+                </label>
+                <input
+                  type="number"
+                  value={verifyAmount}
+                  onChange={(e) => setVerifyAmount(e.target.value)}
+                  placeholder="e.g. 850"
+                  className="w-full px-3 py-2 rounded-xl border border-navy-200 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-navy-800 uppercase mb-1">
+                  Reconciled Transaction Reference (TID)
+                </label>
+                <input
+                  type="text"
+                  value={verifyTid}
+                  onChange={(e) => setVerifyTid(e.target.value)}
+                  placeholder="e.g. JC-1234567890"
+                  className="w-full px-3 py-2 rounded-xl border border-navy-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-navy-800 uppercase mb-1">
+                  Internal Verification Notes
+                </label>
+                <textarea
+                  value={verifyNotes}
+                  onChange={(e) => setVerifyNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Notes on cash settlement or SMS confirmation..."
+                  className="w-full px-3 py-2 rounded-xl border border-navy-200 text-xs focus:outline-none focus:ring-2 focus:ring-aqua-500"
+                />
+              </div>
+
               {verifyFeedback && (
                 <div
-                  className={`p-3 rounded-2xl border text-xs flex items-center gap-2 ${
+                  className={`p-3 rounded-xl flex items-center gap-2 ${
                     verifyFeedback.success
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-red-50 text-red-800 border border-red-200'
                   }`}
                 >
                   {verifyFeedback.success ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   ) : (
-                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                   )}
                   <span>{verifyFeedback.message}</span>
                 </div>
               )}
 
-              {/* Status Selector */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy-700 block">
-                  Updated Payment Status:
-                </label>
-                <select
-                  value={verifyStatus}
-                  onChange={(e) => setVerifyStatus(e.target.value as PaymentStatus)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-ice-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-                >
-                  <option value="Paid">Paid (Confirmed & Verified)</option>
-                  <option value="Awaiting Verification">Awaiting Verification (Needs Follow-up)</option>
-                  <option value="Pending">Pending (Not Yet Received)</option>
-                  <option value="Failed">Failed (Invalid Reference / Transfer Failed)</option>
-                  <option value="Refunded">Refunded (Amount Returned to Customer)</option>
-                </select>
-              </div>
-
-              {/* Verified Amount */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy-700 block">
-                  Confirmed Amount (PKR):
-                </label>
-                <input
-                  type="number"
-                  placeholder="e.g. 850 (Leave blank if pending weighing)"
-                  value={verifyAmount}
-                  onChange={(e) => setVerifyAmount(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-ice-300 text-xs focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-                />
-                <span className="text-[11px] text-darkNavy/50 block">
-                  Confirmed service charges calculated after weighing laundry clothes.
-                </span>
-              </div>
-
-              {/* Transaction Reference / TID */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy-700 block">
-                  Transaction Reference / TID:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. 12-digit JazzCash/Easypaisa TID, Bank Ref, or Rider Receipt"
-                  value={verifyTid}
-                  onChange={(e) => setVerifyTid(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-ice-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-                />
-              </div>
-
-              {/* Internal Staff Notes */}
-              <div className="space-y-1.5">
-                <label className="font-bold text-navy-700 block">
-                  Staff Verification Notes:
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Verified against official JazzCash business SMS notification or cash received at doorstep by rider."
-                  value={verifyNotes}
-                  onChange={(e) => setVerifyNotes(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-ice-300 text-xs focus:outline-none focus:ring-2 focus:ring-navy-400 bg-white"
-                />
-              </div>
-
-              {/* Audit history */}
-              {selectedPayment.verified_at && (
-                <div className="p-3 rounded-xl bg-ice-50 border border-ice-200 text-[11px] text-darkNavy/70 space-y-1">
-                  <div className="font-semibold text-navy-700">Previous Audit Record:</div>
-                  <div>Verified At: {new Date(selectedPayment.verified_at).toLocaleString()}</div>
-                  {selectedPayment.verified_by && <div>Verified By Staff ID: {selectedPayment.verified_by}</div>}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-ice-100">
+              <div className="flex items-center justify-end gap-3 pt-2">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setSelectedPayment(null)}
                 >
@@ -846,13 +1244,11 @@ export const AdminDashboardPage: React.FC = () => {
                 </Button>
                 <Button
                   type="submit"
-                  variant="primary"
                   size="sm"
-                  isLoading={isVerifying}
-                  className="gap-2 font-bold"
-                  leftIcon={<ShieldCheck className="w-4 h-4" />}
+                  disabled={isVerifying}
+                  className="bg-navy-500 hover:bg-navy-600 text-white font-bold"
                 >
-                  Save Verification Status
+                  {isVerifying ? 'Saving Changes...' : 'Save Verification'}
                 </Button>
               </div>
             </form>

@@ -19,6 +19,7 @@ import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { Input } from '@/components/ui/Input';
+import { SEO } from '@/components/common/SEO';
 
 export const RegisterPage: React.FC = () => {
   const { register, user, isConfigured } = useAuth();
@@ -140,6 +141,10 @@ export const RegisterPage: React.FC = () => {
 
   return (
     <div className="py-12 sm:py-20">
+      <SEO
+        title="Create Customer Account"
+        description="Register for a free Pickup Wash account. Save your address, view order history, track deliveries, and claim free pickup in Kasur."
+      />
       <Container size="sm">
         <div className="bg-white rounded-3xl p-6 sm:p-10 border border-ice-200 shadow-soft space-y-6">
           

@@ -21,6 +21,7 @@ import {
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
+import { SEO } from '@/components/common/SEO';
 
 export const HowItWorksPage: React.FC = () => {
   // Custom Washing Machine Icon matching brand geometry
@@ -128,6 +129,10 @@ export const HowItWorksPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="How Pickup Wash Works - 4 Easy Steps"
+        description="Learn how Pickup Wash works: 1. Schedule online, 2. Doorstep collection, 3. Hygienic washing & steam pressing, 4. Fresh doorstep delivery in Kasur."
+      />
       
       {/* =========================================================================
           1. HERO BANNER

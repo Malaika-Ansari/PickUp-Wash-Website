@@ -1,37 +1,47 @@
 import React, { useState } from 'react';
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { 
+  LayoutDashboard,
   ShoppingBag, 
+  Users,
+  Sliders,
+  CreditCard,
+  Bell,
+  BarChart3,
+  Settings,
   ArrowLeft, 
   LogOut, 
   ShieldCheck, 
   Menu, 
   X, 
   MapPin, 
-  Clock, 
-  Sparkles,
-  RefreshCw,
-  Sliders,
-  Users,
-  Bell
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
 import { cn } from '@/utils/cn';
 
 export const AdminLayout: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [mobileAdminDrawerOpen, setMobileAdminDrawerOpen] = useState(false);
+
+  const currentTab = searchParams.get('tab') || 'overview';
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    navigate('/admin/login');
   };
 
   const navItems = [
-    { label: 'Orders & Tracking', path: '/admin', icon: ShoppingBag, badge: 'Live' },
+    { id: 'overview', label: 'Overview', path: '/admin?tab=overview', icon: LayoutDashboard },
+    { id: 'bookings', label: 'Bookings', path: '/admin?tab=bookings', icon: ShoppingBag, badge: 'Live' },
+    { id: 'customers', label: 'Customers', path: '/admin?tab=customers', icon: Users },
+    { id: 'services', label: 'Services & Pricing', path: '/admin?tab=services', icon: Sliders },
+    { id: 'payments', label: 'Payments', path: '/admin?tab=payments', icon: CreditCard },
+    { id: 'notifications', label: 'Notifications', path: '/admin?tab=notifications', icon: Bell },
+    { id: 'analytics', label: 'Reports & Analytics', path: '/admin?tab=analytics', icon: BarChart3 },
+    { id: 'settings', label: 'Settings', path: '/admin?tab=settings', icon: Settings },
   ];
 
   return (
@@ -61,20 +71,20 @@ export const AdminLayout: React.FC = () => {
             </div>
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = location.pathname === item.path;
+              const active = currentTab === item.id;
               return (
                 <Link
-                  key={item.path}
+                  key={item.id}
                   to={item.path}
                   className={cn(
-                    'flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs sm:text-sm font-medium transition-colors',
+                    'flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors',
                     active
                       ? 'bg-navy-500 text-white font-semibold shadow-sm'
                       : 'text-ice-200/80 hover:bg-navy-600 hover:text-white'
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className="w-4 h-4 text-aqua-300" />
+                    <Icon className={cn('w-4 h-4', active ? 'text-aqua-300' : 'text-ice-200/60')} />
                     <span>{item.label}</span>
                   </div>
                   {item.badge && (
@@ -91,8 +101,13 @@ export const AdminLayout: React.FC = () => {
         {/* User Info & Public Return */}
         <div className="pt-6 border-t border-navy-600/70 space-y-3">
           <div className="text-xs text-ice-200/70 p-3 rounded-2xl bg-navy-800/60 border border-navy-600/50">
-            <span className="text-[11px] text-aqua-300 uppercase font-semibold block mb-0.5">Logged in Staff</span>
-            <strong className="text-white font-medium block truncate">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-aqua-300 uppercase font-bold tracking-wider">Authenticated</span>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-aqua-400/20 text-aqua-300 border border-aqua-400/30">
+                Verified Admin
+              </span>
+            </div>
+            <strong className="text-white font-medium block truncate text-xs">
               {user?.email || 'admin@pickupwash.pk'}
             </strong>
           </div>
@@ -166,19 +181,33 @@ export const AdminLayout: React.FC = () => {
               </div>
 
               <nav className="space-y-1.5">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={() => setMobileAdminDrawerOpen(false)}
-                    className="flex items-center justify-between p-3 rounded-xl bg-navy-600 text-white text-sm font-medium"
-                  >
-                    <span>{item.label}</span>
-                    <span className="text-[10px] font-bold bg-aqua-400 text-darkNavy px-2 py-0.5 rounded-full">
-                      Live
-                    </span>
-                  </Link>
-                ))}
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = currentTab === item.id;
+                  return (
+                    <Link
+                      key={item.id}
+                      to={item.path}
+                      onClick={() => setMobileAdminDrawerOpen(false)}
+                      className={cn(
+                        'flex items-center justify-between p-3 rounded-xl text-sm font-medium transition-colors',
+                        active
+                          ? 'bg-navy-500 text-white font-semibold'
+                          : 'bg-navy-600/70 text-ice-200/90 hover:bg-navy-600 hover:text-white'
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={cn('w-4 h-4', active ? 'text-aqua-300' : 'text-ice-200/60')} />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span className="text-[10px] font-bold bg-aqua-400 text-darkNavy px-2 py-0.5 rounded-full">
+                          {item.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
               </nav>
             </div>
 

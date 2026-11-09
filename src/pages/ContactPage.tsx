@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
+import { SEO } from '@/components/common/SEO';
 
 export const ContactPage: React.FC = () => {
   const [form, setForm] = useState({
@@ -69,6 +70,10 @@ export const ContactPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="Contact Us & Customer Support"
+        description="Have questions or need assistance with your laundry pickup? Contact the Pickup Wash Kasur support team via phone, WhatsApp, or contact form."
+      />
       {/* =========================================================================
           1. HERO HEADER
          ========================================================================= */}

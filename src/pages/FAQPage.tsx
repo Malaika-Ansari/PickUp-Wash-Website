@@ -20,6 +20,7 @@ import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { BUSINESS_INFO } from '@/utils/constants';
+import { SEO } from '@/components/common/SEO';
 
 interface FAQItem {
   id: number;
@@ -143,6 +144,10 @@ export const FAQPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="Frequently Asked Questions (FAQ)"
+        description="Got questions about laundry turnaround, turnaround times, rates, packaging, or 3-hour rescheduling policies in Kasur? Find all answers here."
+      />
       {/* =========================================================================
           1. HERO SECTION
          ========================================================================= */}

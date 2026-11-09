@@ -24,10 +24,13 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS, TIME_SLOTS } from '@/utils/constants';
 import { orderService } from '@/services/orderService';
+import { catalogService } from '@/services/catalogService';
 import { useAuth } from '@/hooks/useAuth';
+import { ServiceRecord, PromotionRecord } from '@/types';
+import { SEO } from '@/components/common/SEO';
 
 // Allowed services as requested by the prompt
-type ServiceType = 'Wash & Iron' | 'Express Service' | 'Monthly Package';
+type ServiceType = string;
 
 // Payment methods as requested by the prompt
 type PaymentMethodType = 'Cash on Delivery' | 'JazzCash' | 'Easypaisa' | 'Bank Transfer';
@@ -50,6 +53,10 @@ export const BookingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
+  // Active services & promotion loaded from Supabase
+  const [activeServices, setActiveServices] = useState<ServiceRecord[]>([]);
+  const [firstPickupPromo, setFirstPickupPromo] = useState<PromotionRecord | null>(null);
+
   // Get today's date formatted as YYYY-MM-DD for min date attribute
   const today = new Date().toISOString().split('T')[0];
 
@@ -57,7 +64,8 @@ export const BookingPage: React.FC = () => {
   const initialService = (): ServiceType => {
     const param = searchParams.get('service');
     if (param === 'express-service') return 'Express Service';
-    if (param === 'monthly-packages') return 'Monthly Package';
+    if (param === 'monthly-packages') return 'Monthly Packages';
+    if (param === 'pickup-and-delivery') return 'Pickup & Delivery';
     return 'Wash & Iron';
   };
 
@@ -74,6 +82,40 @@ export const BookingPage: React.FC = () => {
     paymentMethod: 'Cash on Delivery',
     agreedToPolicies: false,
   });
+
+  // Load active services and promotion on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCatalog() {
+      try {
+        const [srvRes, promoRes] = await Promise.all([
+          catalogService.getActiveServices(),
+          catalogService.getFirstPickupPromotion(),
+        ]);
+        if (isMounted) {
+          setActiveServices(srvRes.services);
+          setFirstPickupPromo(promoRes);
+
+          // If the currently selected service is inactive, switch to the first active service
+          if (srvRes.services.length > 0) {
+            const isCurrentActive = srvRes.services.some(
+              (s) => s.service_name.toLowerCase() === formData.laundryService.toLowerCase() ||
+                     s.slug === formData.laundryService.toLowerCase()
+            );
+            if (!isCurrentActive) {
+              setFormData((prev) => ({ ...prev, laundryService: srvRes.services[0].service_name }));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error loading active services for booking:', err);
+      }
+    }
+    loadCatalog();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const { user } = useAuth();
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -252,6 +294,10 @@ export const BookingPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="Schedule a Laundry Pickup"
+        description="Book laundry pickup in Kasur online. Select your service, pickup date, time slot, and preferred payment method (Cash on Delivery, JazzCash, Easypaisa, Bank Transfer)."
+      />
       {/* =========================================================================
           1. HERO HEADER
          ========================================================================= */}
@@ -462,33 +508,23 @@ export const BookingPage: React.FC = () => {
                   </label>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {[
-                      {
-                        id: 'Wash & Iron',
-                        title: 'Wash & Iron',
-                        desc: 'Complete washing, steam ironing & neat folding',
-                        icon: Sparkles,
-                      },
-                      {
-                        id: 'Express Service',
-                        title: 'Express Service',
-                        desc: 'Priority expedited turnaround for urgent needs',
-                        icon: Clock,
-                      },
-                      {
-                        id: 'Monthly Package',
-                        title: 'Monthly Package',
-                        desc: 'Scheduled weekly plan for households',
-                        icon: Layers,
-                      },
-                    ].map((srv) => {
-                      const Icon = srv.icon;
-                      const isSelected = formData.laundryService === srv.id;
+                    {(activeServices.length > 0
+                      ? activeServices
+                      : [
+                          { id: 'srv-1', service_name: 'Wash & Iron', description: 'Complete washing, steam ironing & neat folding', slug: 'wash-and-iron', is_active: true },
+                          { id: 'srv-2', service_name: 'Express Service', description: 'Priority expedited turnaround for urgent needs', slug: 'express-service', is_active: true },
+                          { id: 'srv-3', service_name: 'Monthly Packages', description: 'Scheduled weekly plan for households', slug: 'monthly-packages', is_active: true },
+                        ]
+                    ).map((srv) => {
+                      const isSelected =
+                        formData.laundryService.toLowerCase() === srv.service_name.toLowerCase() ||
+                        formData.laundryService.toLowerCase() === srv.slug.toLowerCase();
+                      const Icon = srv.slug.includes('express') ? Clock : srv.slug.includes('package') ? Layers : Sparkles;
 
                       return (
                         <div
                           key={srv.id}
-                          onClick={() => handleInputChange('laundryService', srv.id as ServiceType)}
+                          onClick={() => handleInputChange('laundryService', srv.service_name)}
                           className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                             isSelected
                               ? 'border-aqua-400 bg-aqua-50/50 ring-2 ring-aqua-400/30 shadow-sm'
@@ -510,16 +546,16 @@ export const BookingPage: React.FC = () => {
                                 type="radio"
                                 name="laundryServiceRadio"
                                 checked={isSelected}
-                                onChange={() => handleInputChange('laundryService', srv.id as ServiceType)}
+                                onChange={() => handleInputChange('laundryService', srv.service_name)}
                                 className="text-aqua-600 focus:ring-aqua-400"
                               />
                             </div>
 
                             <h4 className="font-poppins font-bold text-sm text-navy-500">
-                              {srv.title}
+                              {srv.service_name}
                             </h4>
-                            <p className="text-[11px] text-darkNavy/70 leading-normal">
-                              {srv.desc}
+                            <p className="text-[11px] text-darkNavy/70 leading-normal line-clamp-2">
+                              {srv.description}
                             </p>
                           </div>
                         </div>
@@ -720,25 +756,27 @@ export const BookingPage: React.FC = () => {
             <div className="lg:col-span-4 space-y-6">
               
               {/* 1. Free First Pickup Banner */}
-              <div className="bg-white rounded-3xl p-6 border-2 border-aqua-300 shadow-soft relative overflow-hidden">
-                <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-aqua-100/50 rounded-full blur-xl pointer-events-none" />
+              {firstPickupPromo?.is_active && (
+                <div className="bg-white rounded-3xl p-6 border-2 border-aqua-300 shadow-soft relative overflow-hidden">
+                  <div className="absolute top-0 right-0 -mr-10 -mt-10 w-40 h-40 bg-aqua-100/50 rounded-full blur-xl pointer-events-none" />
 
-                <div className="relative z-10 space-y-3">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aqua-50 text-aqua-800 text-xs font-bold border border-aqua-200">
-                    <Gift className="w-4 h-4 text-aqua-600" />
-                    <span>Welcome Promotion</span>
+                  <div className="relative z-10 space-y-3">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aqua-50 text-aqua-800 text-xs font-bold border border-aqua-200">
+                      <Gift className="w-4 h-4 text-aqua-600" />
+                      <span>Welcome Promotion</span>
+                    </div>
+
+                    <h3 className="font-poppins font-extrabold text-xl text-navy-500">
+                      {firstPickupPromo.title || 'Your First Pickup is FREE!'}
+                    </h3>
+
+                    <p className="text-xs text-darkNavy/75 leading-relaxed font-inter">
+                      {firstPickupPromo.description ||
+                        'We want every household in Kasur to experience hassle-free laundry. Enjoy zero doorstep pickup charges on your eligible first booking.'}
+                    </p>
                   </div>
-
-                  <h3 className="font-poppins font-extrabold text-xl text-navy-500">
-                    Your First Pickup is FREE!
-                  </h3>
-
-                  <p className="text-xs text-darkNavy/75 leading-relaxed font-inter">
-                    We want every household in Kasur to experience hassle-free laundry. Enjoy zero
-                    doorstep pickup charges on your eligible first booking.
-                  </p>
                 </div>
-              </div>
+              )}
 
               {/* 2. Rates Confirmation Notice */}
               <div className="bg-white rounded-3xl p-6 border border-ice-200 shadow-soft space-y-3">

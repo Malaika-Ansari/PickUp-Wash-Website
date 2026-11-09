@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Clock, 
@@ -13,14 +13,81 @@ import {
   Flame, 
   HelpCircle,
   MapPin,
-  CalendarCheck
+  CalendarCheck,
+  Gift
 } from 'lucide-react';
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { FOUR_MAIN_SERVICES, BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
+import { catalogService } from '@/services/catalogService';
+import { ServiceRecord, PromotionRecord } from '@/types';
+import { SEO } from '@/components/common/SEO';
 
 export const ServicesPage: React.FC = () => {
+  const [activeServices, setActiveServices] = useState<ServiceRecord[]>([]);
+  const [firstPickupPromo, setFirstPickupPromo] = useState<PromotionRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [srvRes, promoRes] = await Promise.all([
+          catalogService.getActiveServices(),
+          catalogService.getFirstPickupPromotion(),
+        ]);
+        if (isMounted) {
+          setActiveServices(srvRes.services);
+          setFirstPickupPromo(promoRes);
+        }
+      } catch (err) {
+        console.warn('Error loading services for ServicesPage:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+  const displayedServices = React.useMemo(() => {
+    if (activeServices.length === 0) {
+      return FOUR_MAIN_SERVICES;
+    }
+    return activeServices.map((srv) => {
+      const match = FOUR_MAIN_SERVICES.find(
+        (f) => f.id === srv.slug || f.title.toLowerCase() === srv.service_name.toLowerCase()
+      );
+      if (match) {
+        return {
+          ...match,
+          id: srv.slug || match.id,
+          title: srv.service_name.toUpperCase(),
+          description: srv.description || match.description,
+          timingNote: srv.turnaround_time || match.timingNote,
+        };
+      }
+      return {
+        id: srv.slug,
+        title: srv.service_name.toUpperCase(),
+        shortTitle: srv.service_name,
+        description: srv.description,
+        iconName: 'WashingMachine' as const,
+        timingNote: srv.turnaround_time || '24–48h Return',
+        popular: false,
+        badge: undefined,
+        features: [
+          'Hygienic individual machine wash',
+          'Fabric softening & anti-bacterial rinse',
+          'High-pressure steam ironing',
+          'Doorstep collection and delivery in Kasur',
+        ],
+      };
+    });
+  }, [activeServices]);
+
   // Custom Washing Machine Icon matching brand geometry
   const WashingMachineIcon = () => (
     <svg className="w-6 h-6 text-navy-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -49,6 +116,10 @@ export const ServicesPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="Our Laundry Services & Solutions"
+        description="Explore wash & iron, express delivery, and monthly package subscriptions tailored for homes and professionals in Kasur City, Pakistan."
+      />
       
       {/* =========================================================================
           1. SERVICES HERO BANNER
@@ -80,6 +151,12 @@ export const ServicesPage: React.FC = () => {
 
           {/* Quick Kasur Benefits Badges */}
           <div className="pt-4 flex flex-wrap items-center justify-center gap-2 text-xs">
+            {firstPickupPromo?.is_active && (
+              <span className="px-3 py-1 rounded-full bg-aqua-100 text-aqua-900 border border-aqua-300 shadow-card flex items-center gap-1.5 font-bold">
+                <Gift className="w-3.5 h-3.5 text-aqua-700" />
+                First Pickup is FREE!
+              </span>
+            )}
             <span className="px-3 py-1 rounded-full bg-white text-navy-700 border border-ice-200 shadow-card flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-aqua-500" />
               Free Pickup on PKR 500+
@@ -168,7 +245,7 @@ export const ServicesPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {FOUR_MAIN_SERVICES.map((service) => (
+            {displayedServices.map((service) => (
               <div
                 key={service.id}
                 className={`relative rounded-3xl p-6 sm:p-8 bg-white border transition-all duration-300 flex flex-col justify-between group ${
@@ -353,7 +430,7 @@ export const ServicesPage: React.FC = () => {
                 </h2>
 
                 <p className="text-ice-200/90 text-sm sm:text-base max-w-2xl leading-relaxed">
-                  Schedule your doorstep pickup in less than 60 seconds. Our rider will arrive during your selected time slot with a clean laundry bag. Your first pickup is completely FREE!
+                  Schedule your doorstep pickup in less than 60 seconds. Our rider will arrive during your selected time slot with a clean laundry bag.{firstPickupPromo?.is_active ? ' Your first pickup is completely FREE!' : ''}
                 </p>
 
                 {/* Kasur Neighborhoods Chips */}

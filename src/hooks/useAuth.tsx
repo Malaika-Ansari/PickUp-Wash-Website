@@ -8,6 +8,7 @@ interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  adminLogin: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (
     email: string,
     password: string,
@@ -104,6 +105,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: Boolean(loggedInUser), error };
   };
 
+  const adminLogin = async (email: string, password: string) => {
+    setIsLoading(true);
+    const { user: adminUser, error } = await authService.adminSignIn(email, password);
+    if (adminUser) {
+      setUser(adminUser);
+    } else {
+      setUser(null);
+    }
+    setIsLoading(false);
+    return { success: Boolean(adminUser), error };
+  };
+
   const register = async (
     email: string,
     password: string,
@@ -169,6 +182,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         isLoading,
         login,
+        adminLogin,
         register,
         resetPassword,
         updateProfile,

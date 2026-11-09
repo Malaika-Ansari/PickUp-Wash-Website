@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/common/Logo';
 import { Button } from '@/components/ui/Button';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useAuth } from '@/hooks/useAuth';
 import { BUSINESS_INFO } from '@/utils/constants';
 import { NavigationDrawer } from './NavigationDrawer';
@@ -151,6 +152,8 @@ export const Header: React.FC = () => {
               {/* Customer Account / Sign In */}
               {user ? (
                 <div className="flex items-center gap-2 pl-1 border-l border-ice-200">
+                  <NotificationBell />
+
                   <Link
                     to="/account"
                     className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-ice-50 text-darkNavy rounded-xl border border-ice-200 hover:bg-ice-100 transition-colors"

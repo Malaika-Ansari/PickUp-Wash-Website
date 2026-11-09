@@ -133,3 +133,4 @@ DROP POLICY IF EXISTS "Admins have full access to payments" ON public.payments;
 CREATE POLICY "Admins have full access to payments"
     ON public.payments FOR ALL
     USING (public.is_admin());
+

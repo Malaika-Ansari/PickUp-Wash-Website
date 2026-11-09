@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarCheck,
@@ -20,8 +20,38 @@ import {
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
 import { BUSINESS_INFO, KASUR_SERVICE_AREAS } from '@/utils/constants';
+import { catalogService } from '@/services/catalogService';
+import { ServiceRecord, MonthlyPackageRecord, PromotionRecord } from '@/types';
+import { SEO } from '@/components/common/SEO';
 
 export const PricingPage: React.FC = () => {
+  const [activeServices, setActiveServices] = useState<ServiceRecord[]>([]);
+  const [activePackages, setActivePackages] = useState<MonthlyPackageRecord[]>([]);
+  const [firstPickupPromo, setFirstPickupPromo] = useState<PromotionRecord | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadPricingData() {
+      try {
+        const [srvRes, pkgRes, promoRes] = await Promise.all([
+          catalogService.getActiveServices(),
+          catalogService.getActiveMonthlyPackages(),
+          catalogService.getFirstPickupPromotion(),
+        ]);
+        if (isMounted) {
+          setActiveServices(srvRes.services);
+          setActivePackages(pkgRes.packages);
+          setFirstPickupPromo(promoRes);
+        }
+      } catch (err) {
+        console.warn('Error loading PricingPage data:', err);
+      }
+    }
+    loadPricingData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   // Custom Washing Machine SVG icon matching brand geometry
   const WashingMachineIcon = () => (
     <svg
@@ -122,6 +152,51 @@ export const PricingPage: React.FC = () => {
     },
   ];
 
+  const displayedServiceCards = useMemo(() => {
+    if (activeServices.length === 0) return serviceCards;
+
+    return activeServices.map((srv) => {
+      const match = serviceCards.find(
+        (c) => c.id === srv.slug || c.title.toLowerCase() === srv.service_name.toLowerCase()
+      );
+
+      let rateDisplay = 'Contact Us for Current Rates';
+      if (srv.is_pricing_active && srv.price_per_kg != null) {
+        rateDisplay = `PKR ${srv.price_per_kg} / kg`;
+      } else if (srv.is_pricing_active && srv.base_price != null) {
+        rateDisplay = `From PKR ${srv.base_price}`;
+      }
+
+      if (match) {
+        return {
+          ...match,
+          title: srv.service_name,
+          description: srv.description || match.description,
+          rateDisplay,
+        };
+      }
+
+      return {
+        id: srv.slug,
+        title: srv.service_name,
+        tagline: srv.turnaround_time || 'Quality Doorstep Care',
+        description: srv.description,
+        icon: <WashingMachineIcon />,
+        rateDisplay,
+        actionText: `Book ${srv.service_name}`,
+        actionLink: `/book?service=${srv.slug}`,
+        badge: 'Kasur Care',
+        badgeClass: 'bg-ice-100 text-navy-800 border-ice-200',
+        highlights: [
+          'Hygienic individual machine wash',
+          'Anti-bacterial softening treatment',
+          'Crisp steam pressing',
+          'Fast doorstep return in Kasur',
+        ],
+      };
+    });
+  }, [activeServices]);
+
   const handlePackageScroll = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     const el = document.getElementById('monthly-packages');
@@ -132,6 +207,10 @@ export const PricingPage: React.FC = () => {
 
   return (
     <div className="space-y-16 sm:space-y-24 pb-20">
+      <SEO
+        title="Laundry Rates & Monthly Packages"
+        description="Transparent laundry pricing and affordable monthly plans for households and students in Kasur. Zero hidden charges, free first pickup."
+      />
       {/* =========================================================================
           1. HERO SECTION
          ========================================================================= */}
@@ -222,7 +301,7 @@ export const PricingPage: React.FC = () => {
 
           {/* 4 Cards Grid: 1 col on mobile, 2 col on tablet, 4 col on desktop */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {serviceCards.map((service) => (
+            {displayedServiceCards.map((service) => (
               <div
                 key={service.id}
                 className="bg-white rounded-3xl p-6 sm:p-7 border border-ice-200 shadow-soft hover:shadow-soft-hover hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between group"
@@ -384,6 +463,31 @@ export const PricingPage: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Available Monthly Package Plans from Supabase */}
+                {activePackages.length > 0 && (
+                  <div className="space-y-2.5 pt-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-navy-400 block">
+                      Active Household Plans ({activePackages.length})
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {activePackages.map((pkg) => (
+                        <div key={pkg.id} className="p-3 rounded-2xl bg-ice-50 border border-ice-200 flex flex-col justify-between space-y-1">
+                          <div>
+                            <h5 className="font-poppins font-bold text-xs text-darkNavy">{pkg.package_name}</h5>
+                            <p className="text-[11px] text-navy-600 line-clamp-2 mt-0.5">{pkg.description}</p>
+                          </div>
+                          <div className="pt-2 border-t border-ice-200/60 flex items-center justify-between text-[11px]">
+                            <span className="text-navy-400 font-medium">Rate:</span>
+                            <span className="font-mono font-bold text-aqua-700">
+                              {pkg.price != null ? `PKR ${pkg.price.toLocaleString()} / mo` : 'Confirm with Kasur Hub'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* "Get Package Details" Button required by prompt */}
                 <div className="pt-3 flex flex-wrap items-center gap-3">
                   <Link to="/contact">
@@ -457,68 +561,69 @@ export const PricingPage: React.FC = () => {
       {/* =========================================================================
           4. SPECIAL OFFER: "YOUR FIRST PICKUP IS FREE!"
          ========================================================================= */}
-      <section>
-        <Container size="xl">
-          <div className="bg-white rounded-3xl p-8 sm:p-12 border-2 border-aqua-300 shadow-soft relative overflow-hidden">
-            {/* Ambient decorative glow */}
-            <div
-              className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-aqua-100/60 rounded-full blur-2xl pointer-events-none"
-              aria-hidden="true"
-            />
+      {firstPickupPromo?.is_active && (
+        <section>
+          <Container size="xl">
+            <div className="bg-white rounded-3xl p-8 sm:p-12 border-2 border-aqua-300 shadow-soft relative overflow-hidden">
+              {/* Ambient decorative glow */}
+              <div
+                className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-aqua-100/60 rounded-full blur-2xl pointer-events-none"
+                aria-hidden="true"
+              />
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
-              <div className="lg:col-span-8 space-y-3.5 text-center lg:text-left">
-                {/* Special Offer Pill */}
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aqua-50 text-aqua-800 text-xs font-bold border border-aqua-200">
-                  <Gift className="w-4 h-4 text-aqua-600" />
-                  <span>Welcome Offer for Kasur Residents</span>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+                <div className="lg:col-span-8 space-y-3.5 text-center lg:text-left">
+                  {/* Special Offer Pill */}
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-aqua-50 text-aqua-800 text-xs font-bold border border-aqua-200">
+                    <Gift className="w-4 h-4 text-aqua-600" />
+                    <span>Welcome Offer for Kasur Residents</span>
+                  </div>
+
+                  {/* Highlight: Exact prompt requirement */}
+                  <h2 className="font-poppins font-extrabold text-2xl sm:text-3xl lg:text-4xl text-navy-500 tracking-tight">
+                    {firstPickupPromo.title || 'Your First Pickup is FREE!'}
+                  </h2>
+
+                  <p className="text-xs sm:text-sm text-darkNavy/80 max-w-2xl leading-relaxed font-inter">
+                    {firstPickupPromo.description ||
+                      'Experience the convenience of doorstep laundry in Kasur with zero risk. We collect your laundry directly from your gate, wash and steam press with hygienic care, and return it fresh. Enjoy free pickup on your very first booking!'}
+                  </p>
+
+                  {/* Trust Badges */}
+                  <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs font-semibold text-navy-700">
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      No Subscription Required
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      No Advance Payment
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Valid on Any Service
+                    </span>
+                  </div>
                 </div>
 
-                {/* Highlight: Exact prompt requirement */}
-                <h2 className="font-poppins font-extrabold text-2xl sm:text-3xl lg:text-4xl text-navy-500 tracking-tight">
-                  Your First Pickup is FREE!
-                </h2>
-
-                <p className="text-xs sm:text-sm text-darkNavy/80 max-w-2xl leading-relaxed font-inter">
-                  Experience the convenience of doorstep laundry in Kasur with zero risk. We collect
-                  your laundry directly from your gate, wash and steam press with hygienic care, and
-                  return it fresh. Enjoy free pickup on your very first booking!
-                </p>
-
-                {/* Trust Badges */}
-                <div className="pt-2 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs font-semibold text-navy-700">
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    No Subscription Required
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    No Advance Payment
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    Valid on Any Service
-                  </span>
+                {/* Clear Booking Button */}
+                <div className="lg:col-span-4 flex justify-center lg:justify-end">
+                  <Link to="/book" className="w-full sm:w-auto">
+                    <Button
+                      size="lg"
+                      variant="accent"
+                      className="w-full sm:w-auto px-8 py-4 font-bold shadow-aqua text-darkNavy text-base"
+                      leftIcon={<CalendarCheck className="w-5 h-5 text-darkNavy" />}
+                    >
+                      Claim Free Pickup
+                    </Button>
+                  </Link>
                 </div>
-              </div>
-
-              {/* Clear Booking Button */}
-              <div className="lg:col-span-4 flex justify-center lg:justify-end">
-                <Link to="/book" className="w-full sm:w-auto">
-                  <Button
-                    size="lg"
-                    variant="accent"
-                    className="w-full sm:w-auto px-8 py-4 font-bold shadow-aqua text-darkNavy text-base"
-                    leftIcon={<CalendarCheck className="w-5 h-5 text-darkNavy" />}
-                  >
-                    Claim Free Pickup
-                  </Button>
-                </Link>
               </div>
             </div>
-          </div>
-        </Container>
-      </section>
+          </Container>
+        </section>
+      )}
 
       {/* =========================================================================
           5. CALL TO ACTION (CTA)

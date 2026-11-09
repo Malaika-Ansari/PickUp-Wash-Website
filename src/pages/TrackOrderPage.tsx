@@ -39,6 +39,7 @@ import { bookingService } from '@/services/bookingService';
 import { paymentService } from '@/services/paymentService';
 import { Order, OrderStatus, BookingStatusHistoryRecord, PaymentRecord } from '@/types';
 import { TIME_SLOTS, BUSINESS_INFO } from '@/utils/constants';
+import { SEO } from '@/components/common/SEO';
 
 // The 6 Order Status Stages required by the prompt
 interface TimelineStage {
@@ -398,6 +399,10 @@ export const TrackOrderPage: React.FC = () => {
 
   return (
     <div className="space-y-12 sm:space-y-16 pb-20 pt-8 sm:pt-12">
+      <SEO
+        title="Live Order Tracking"
+        description="Track your laundry booking status in Kasur in real time: Request Received, Confirmed, Picked Up, Washing & Ironing, Ready for Delivery, Delivered."
+      />
       <Container size="lg">
         <div className="max-w-4xl mx-auto space-y-10">
           

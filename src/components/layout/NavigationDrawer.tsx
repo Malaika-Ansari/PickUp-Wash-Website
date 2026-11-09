@@ -14,7 +14,8 @@ import {
   User, 
   LogOut,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Bell,
 } from 'lucide-react';
 import { Logo } from '@/components/common/Logo';
 import { Button } from '@/components/ui/Button';
@@ -151,9 +152,19 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               )}
             </div>
             <div className="pt-2 border-t border-ice-200/80 flex items-center justify-between text-xs">
-              <Link to="/account" onClick={onClose} className="text-navy-600 font-semibold hover:underline">
-                My Account
-              </Link>
+              <div className="flex items-center gap-3">
+                <Link to="/account" onClick={onClose} className="text-navy-600 font-semibold hover:underline">
+                  My Account
+                </Link>
+                <Link
+                  to="/account/notifications"
+                  onClick={onClose}
+                  className="text-aqua-700 font-semibold hover:underline flex items-center gap-1"
+                >
+                  <Bell className="w-3 h-3 text-aqua-600" />
+                  <span>Alerts</span>
+                </Link>
+              </div>
               <button
                 type="button"
                 onClick={() => {

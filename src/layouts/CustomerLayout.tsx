@@ -11,9 +11,12 @@ import {
   ChevronRight,
   ShieldCheck,
   Search,
-  LayoutDashboard
+  LayoutDashboard,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { notificationService } from '@/services/notificationService';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/common/Footer';
 import { MobileBottomBar } from '@/components/layout/MobileBottomBar';
@@ -39,6 +42,14 @@ export const CustomerLayout: React.FC = () => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  const [unreadNotifs, setUnreadNotifs] = React.useState<number>(0);
+
+  React.useEffect(() => {
+    if (user?.id) {
+      notificationService.getUnreadCount(user.id).then(setUnreadNotifs).catch(() => {});
+    }
+  }, [user?.id, location.pathname]);
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -47,6 +58,12 @@ export const CustomerLayout: React.FC = () => {
   const customerNav = [
     { label: 'Overview', path: '/account', icon: LayoutDashboard },
     { label: 'My Bookings', path: '/account/history', icon: Package },
+    {
+      label: 'Notifications',
+      path: '/account/notifications',
+      icon: Bell,
+      badge: unreadNotifs > 0 ? String(unreadNotifs) : undefined,
+    },
     { label: 'Track Order', path: '/track', icon: Search },
     { label: 'My Profile', path: '/account/profile', icon: User },
     { label: 'Help & Support', path: '/contact', icon: HelpCircle },
@@ -80,6 +97,8 @@ export const CustomerLayout: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
+              <NotificationBell className="text-white hover:bg-white/10" />
+
               <Link to="/book">
                 <Button size="sm" variant="accent" className="gap-2 font-semibold">
                   <CalendarCheck className="w-4 h-4" />
@@ -120,7 +139,14 @@ export const CustomerLayout: React.FC = () => {
                         <Icon className={cn('w-4 h-4', active ? 'text-aqua-300' : 'text-navy-400')} />
                         <span>{item.label}</span>
                       </div>
-                      <ChevronRight className={cn('w-3.5 h-3.5', active ? 'text-white' : 'text-darkNavy/30')} />
+                      <div className="flex items-center gap-1.5">
+                        {item.badge && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-aqua-400 text-darkNavy">
+                            {item.badge}
+                          </span>
+                        )}
+                        <ChevronRight className={cn('w-3.5 h-3.5', active ? 'text-white' : 'text-darkNavy/30')} />
+                      </div>
                     </Link>
                   );
                 })}

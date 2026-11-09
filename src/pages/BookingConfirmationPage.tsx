@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Container } from '@/components/layout/Container';
 import { Button } from '@/components/ui/Button';
+import { SEO } from '@/components/common/SEO';
 
 export interface BookingStateData {
   fullName: string;
@@ -124,6 +125,10 @@ export const BookingConfirmationPage: React.FC = () => {
 
   return (
     <div className="space-y-12 sm:space-y-16 pb-20 pt-8 sm:pt-12">
+      <SEO
+        title="Booking Request Confirmed"
+        description="Your laundry pickup request has been received. Our rider will contact you prior to collection."
+      />
       <Container size="lg">
         <div className="max-w-3xl mx-auto space-y-8">
           
